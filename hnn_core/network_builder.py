@@ -263,6 +263,7 @@ def _create_parallel_context(n_cores=None, expose_imem=False):
 
     # be explicit about using fixed step integration
     _CVODE.active(0)
+    #_CVODE.active(1)
     # note that CVode seems to forget this setting in either parallel backend
     if expose_imem:
         _CVODE.use_fast_imem(1)
