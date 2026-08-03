@@ -150,8 +150,7 @@ vsec_adaptive = results['vsec']
 times_adaptive = results['times']
 
 
-
-
+# unsmoothed dipole
 plt.figure(figsize=(10, 4))
 
 plt.plot(
@@ -182,6 +181,77 @@ plt.xlabel('Time (ms)')
 plt.ylabel('Dipole (nAm)')
 plt.legend()
 plt.show()
+
+
+
+
+window_len = 30  # ms
+
+dpl_fixed_0025_smooth = dpl_fixed_0025.copy().smooth(window_len)
+dpl_fixed_00025_smooth = dpl_fixed_00025.copy().smooth(window_len)
+dpl_fixed_000025_smooth = dpl_fixed_000025.copy().smooth(window_len)
+
+#To smooth the dipole from adaptive time step
+# 1. handle duplicate timestamps
+t_adapt, idx = np.unique(dpl_adaptive.times, return_index=True)
+data_adapt = dpl_adaptive.data['agg'][idx]
+
+# 2. interpolate onto a uniform grid
+dt_uniform = 0.00025  # 
+t_uniform = np.arange(t_adapt[0], t_adapt[-1], dt_uniform)
+data_uniform = np.interp(t_uniform, t_adapt, data_adapt)
+plt.figure(figsize=(10, 4))
+plt.plot(
+    t_uniform,
+    data_uniform,
+    label='Interpolated adaptive time step'
+)
+
+
+# 3. smoothing
+from hnn_core import Dipole
+
+dpl_adaptive_uniform = Dipole(t_uniform, data_uniform)  # single column -> treated as 'agg'
+dpl_adaptive_smooth = dpl_adaptive_uniform.copy().smooth(window_len)
+
+plt.plot(dpl_adaptive_smooth.times, dpl_adaptive_smooth.data['agg'],
+          label='Adaptive (interpolated + smoothed)')
+
+
+
+
+# smoothed dipole
+plt.figure(figsize=(10, 4))
+
+plt.plot(
+    dpl_fixed_0025.times,
+    dpl_fixed_0025_smooth.data['agg'],
+    label='Fixed timestep (dt=0.025)'
+)
+
+plt.plot(
+    dpl_fixed_00025.times,
+    dpl_fixed_00025_smooth.data['agg'],
+    label='Fixed timestep (dt=0.0025)'
+)
+
+plt.plot(
+    dpl_fixed_000025.times,
+    dpl_fixed_000025_smooth.data['agg'],
+    label='Fixed timestep (dt=0.00025)'
+)
+
+plt.plot(
+    dpl_adaptive_smooth.times,
+    dpl_adaptive_smooth.data['agg'],
+    label='Adaptive timestep (interpolated + smoothed)'
+)
+
+plt.xlabel('Time (ms)')
+plt.ylabel('Smoothed dipole (nAm)')
+plt.legend()
+plt.show()
+
 
 
 # plot raster plots
