@@ -1669,9 +1669,10 @@ class Network:
                     )
                     # Ensure that AMPA/NMDA connections target the same gids
                     if receptor_idx > 0:
-                        self.connectivity[-1]["src_gids"] = self.connectivity[-2][
-                            "src_gids"
-                        ]
+                        if isinstance(self.use_dataframe, bool) and not self.use_dataframe: #i.e., use this only when using net.connectivity (legacy version, not df)
+                            self.connectivity[-1]["src_gids"] = self.connectivity[-2][
+                                "src_gids"
+                            ]
 
             else:
                 for receptor_idx, receptor in enumerate(
