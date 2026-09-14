@@ -1105,7 +1105,8 @@ class Cell:
                 list_syn = [
                     key
                     for key in self._nrn_synapses.keys()
-                    if key.startswith(f"{sec_name}_")
+                    #if key.startswith(f"{sec_name}_")
+                    if key.startswith(f"{sec_name}_") or f"_{sec_name}_" in key
                 ]
                 self.isec[sec_name] = dict.fromkeys(list_syn)
 

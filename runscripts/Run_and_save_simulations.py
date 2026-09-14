@@ -18,8 +18,8 @@ from hnn_core.cells_default import pyramidal
 from hnn_core.network_builder import load_custom_mechanisms
 from hnn_core.network_models import add_erp_drives_to_jones_model
 
-net = jones_2009_model()
-#net = jones_2009_model(use_dataframe=True)
+#net = jones_2009_model()
+net = jones_2009_model(use_dataframe=True)
 #add_erp_drives_to_jones_model(net)
 #net_a = neymotin_2020_model(use_data_frame=False)
 
@@ -272,10 +272,10 @@ results = {
 #with open("runscripts/data/sim_results_dt000625_withmembranepot_newelect_calc_noreccon_allactive_subthreshold.pkl", "wb") as f:
 #    pickle.dump(results, f)
 
-#with open("runscripts/data/sim_results_dt000625_conn_dataframe.pkl", "wb") as f:
-#    pickle.dump(results, f)
-with open("runscripts/data/sim_results_dt000625_conn_legacy.pkl", "wb") as f:
+with open("runscripts/data/sim_results_dt000625_conn_dataframe_isec.pkl", "wb") as f:
     pickle.dump(results, f)
+#with open("runscripts/data/sim_results_dt000625_conn_legacy.pkl", "wb") as f:
+#    pickle.dump(results, f)
 
 
 # ------------
