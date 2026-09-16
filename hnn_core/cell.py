@@ -654,7 +654,7 @@ class Cell:
         Connections are grouped based on their target cell and target location.
         """
         for _, row in target_df.iterrows():
-            target = row["target_type"]
+            source = row["src_type"]
             sec_name = row["actual_section"]
             receptor = row["receptor"]
             segX = row["segX"]
@@ -664,7 +664,7 @@ class Cell:
             # we have done above in create_synapses_using_synapse_trees.
             # we were currently having 0.5 everywhere so didn't do it.
             # as it will always be 0.5 then
-            syn_key = f"{target}_{sec_name}_{receptor}_{segX}"
+            syn_key = f"{source}_{sec_name}_{receptor}_{segX}"
             self._nrn_synapses[syn_key] = syn
 
     def _create_sections(self, sections, cell_tree):
