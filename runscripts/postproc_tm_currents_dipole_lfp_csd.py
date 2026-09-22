@@ -72,6 +72,7 @@ class SourceInfo:
     label: str
     area_um2: float | None = None
     syn_name: str | None = None
+    presyn_type: str | None = None
     weight_fraction: float = 1.0
 
 
@@ -111,7 +112,7 @@ def _ensure_2d_timeseries(matrix_like: list[np.ndarray]) -> np.ndarray:
     return np.vstack([np.asarray(x, dtype=float)[None, :] for x in matrix_like])
 
 
-def _pick_midpoint_segments(nseg: int, mode: str = "split_even"):
+def _pick_midpoint_segments(nseg: int):#, mode: str = "split_even"):
     """Choose which segment or segments should represent the midpoint of a section 
     for synaptic current assignment, and how to weight them if there are multiple. 
     (I guess it's never the case) For even nseg, the default is to split evenly between the two central segments, 
@@ -126,6 +127,7 @@ def _pick_midpoint_segments(nseg: int, mode: str = "split_even"):
         center = nseg // 2
         return [(center, 1.0)]
 
+    '''
     left = (nseg // 2) - 1
     right = nseg // 2
     if mode == "nearest_lower":
@@ -137,7 +139,7 @@ def _pick_midpoint_segments(nseg: int, mode: str = "split_even"):
     raise ValueError(
         "midpoint_mode must be one of {'split_even', 'nearest_lower', 'nearest_upper'}"
     )
-
+    '''
 
 def _channel_data_for_gid(net, trial_idx: int, gid: int, channel: str):
     return net.cell_response.transmembrane_currents[channel][trial_idx][gid]
@@ -145,6 +147,12 @@ def _channel_data_for_gid(net, trial_idx: int, gid: int, channel: str):
 
 def _synaptic_data_for_gid(net, trial_idx: int, gid: int):
     return net.cell_response.isec[trial_idx][gid]
+
+def _presyn_type_of(syn_name, known_presyn):
+    for name in known_presyn:
+        if syn_name.startswith(name + "_"):
+            return name
+    return None
 
 from collections import defaultdict
 import numpy as np
@@ -263,16 +271,17 @@ def collect_synaptic_sources(
     trial_idx: int = 0,
     cell_types: Sequence[str] = ("L2_pyramidal", "L5_pyramidal"),
     #template_builders: dict[str, Callable] | None = None,
-    midpoint_mode: str = "split_even",
+    #midpoint_mode: str = "split_even",
 ):
     """Collect synaptic current sources using midpoint-segment approximation.
 
     Each recorded synapse current is assigned to the segment corresponding to the
-    section midpoint. For even nseg, it is split between the two central segments
-    unless a different midpoint_mode is requested.
+    section midpoint. 
     """
     sources: list[SourceInfo] = []
     currents_nA = []
+    
+    known_presyn = sorted(net.gid_ranges.keys(), key=len, reverse=True)
 
     for cell_type in cell_types:
         template_cell = net.cell_types[cell_type]["cell_object"]
@@ -282,10 +291,11 @@ def collect_synaptic_sources(
                 #nseg = template_cell._nrn_sections[section].nseg
                 nseg = template_cell.sections[section].nseg
                 seg_xs = _segment_xs_for_section(nseg)
-                midpoint_targets = _pick_midpoint_segments(nseg, mode=midpoint_mode)
+                midpoint_targets = _pick_midpoint_segments(nseg)#, mode=midpoint_mode)
 
                 for syn_name, vec in syn_dict.items():
                     syn_current_nA = np.asarray(vec, dtype=float)
+                    presyn_type = _presyn_type_of(str(syn_name), known_presyn)
                     for seg_idx, weight in midpoint_targets:
                         seg_x = seg_xs[seg_idx]
                         area_um2 = _segment_area_um2(template_cell, section, seg_x)
@@ -299,6 +309,7 @@ def collect_synaptic_sources(
                                 segment_x=float(seg_x),
                                 label="isec",
                                 syn_name=str(syn_name),
+                                presyn_type=presyn_type,
                                 area_um2=float(area_um2),
                                 weight_fraction=float(weight),
                             )
@@ -544,13 +555,13 @@ def reconstruct_synaptic_lfp(
     trial_idx: int = 0,
     cell_types: Sequence[str] = ("L2_pyramidal", "L5_pyramidal"),
     array_name: str = "probe1",
-    midpoint_mode: str = "split_even",
+    #midpoint_mode: str = "split_even",
 ):
     sources, I_nA = collect_synaptic_sources(
         net,
         trial_idx=trial_idx,
         cell_types=cell_types,
-        midpoint_mode=midpoint_mode,
+        #midpoint_mode=midpoint_mode,
     )
     T = build_transfer_resistance_matrix_for_sources(net, sources, array_name=array_name)
     lfp = reconstruct_lfp_from_sources(T, I_nA)
@@ -562,11 +573,11 @@ def reconstruct_synaptic_lfp_by_name(
     cell_types=("L2_pyramidal", "L5_pyramidal"),
     syn_names=None,
     array_name="probe1",
-    midpoint_mode="split_even",
+    #midpoint_mode="split_even",
 ):
     sources, I_syn = collect_synaptic_sources(
         net, trial_idx=trial_idx, cell_types=cell_types,
-        midpoint_mode=midpoint_mode,
+        #midpoint_mode=midpoint_mode,
     )
     if syn_names is not None:
         sources, I_syn = filter_sources(sources, I_syn, syn_names=syn_names)
@@ -598,6 +609,7 @@ def filter_sources(
     sections: Sequence[str] | None = None,
     gid_subset: Iterable[int] | None = None,
     syn_names: Sequence[str] | None = None,
+    presyn_types: Sequence[str] | None = None,
 ):
     """Filter an existing source/current collection without rerunning anything."""
     keep = np.ones(len(sources), dtype=bool)
@@ -622,6 +634,7 @@ def filter_sources(
     #        any(src.syn_name.endswith(f"_{syn}") for syn in syn_names)
     #        for src in sources
     #    ])
+    '''
     if syn_names is not None:
         syn_set = set(syn_names)
         result = []
@@ -632,12 +645,24 @@ def filter_sources(
             result.append(value)
 
         keep &= np.array(result)
+    '''
+    # new version:
+    if syn_names is not None:
+        syn_set = set(syn_names)
+        keep &= np.array([
+            src.syn_name is not None and bool(syn_set & set(src.syn_name.split("_")))
+            for src in sources
+        ])
         #keep &= np.array([
         #    src.syn_name is not None
         #    and (src.syn_name in syn_set
         #        or any(src.syn_name.endswith(f"_{s}") for s in syn_set))
         #    for src in sources
         #])
+
+    if presyn_types is not None:
+        presyn_types = set(presyn_types)
+        keep &= np.array([src.presyn_type in presyn_types for src in sources])
 
     filt_sources = [src for src, k in zip(sources, keep) if k]
     filt_I = current_matrix_nA[keep]

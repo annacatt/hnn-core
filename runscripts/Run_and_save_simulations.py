@@ -272,7 +272,7 @@ results = {
 #with open("runscripts/data/sim_results_dt000625_withmembranepot_newelect_calc_noreccon_allactive_subthreshold.pkl", "wb") as f:
 #    pickle.dump(results, f)
 
-with open("runscripts/data/sim_results_dt000625_conn_dataframe_isec.pkl", "wb") as f:
+with open("runscripts/data/sim_results_dt000625_conn_dataframe_isec_v2.pkl", "wb") as f:
     pickle.dump(results, f)
 #with open("runscripts/data/sim_results_dt000625_conn_legacy.pkl", "wb") as f:
 #    pickle.dump(results, f)

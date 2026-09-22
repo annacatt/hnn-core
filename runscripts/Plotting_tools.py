@@ -328,6 +328,7 @@ def plot_laminar_csd_AC(
     overlay_raster_on_csd=False,
     cell_response=None,
     raster_colors=None,
+    raster_cell_types=None
 ):
     import matplotlib.pyplot as plt
     from scipy.interpolate import RectBivariateSpline
@@ -421,8 +422,15 @@ def plot_laminar_csd_AC(
         ax.add_artist(scalebar)
 
     if overlay_raster_on_csd and cell_response is not None:
+            if raster_cell_types is None:                               
+                raster_cell_types = ['L2_pyramidal', 'L5_pyramidal']      
             if raster_colors is None:
-                raster_colors = {'L2_pyramidal': 'C1', 'L5_pyramidal': 'C3'}
+                raster_colors = {
+                    'L2_pyramidal': 'C1', 'L5_pyramidal': 'C3',
+                    'L2_basket': 'C0', 'L5_basket': 'C4',
+                }  
+            #if raster_colors is None:
+            #    raster_colors = {'L2_pyramidal': 'C1', 'L5_pyramidal': 'C3'}
 
             if len(cell_response._spike_times[0]) > 0:
                 spike_times_all = np.concatenate(
@@ -440,7 +448,7 @@ def plot_laminar_csd_AC(
                 spike_gids_all  = np.array([])
 
             ax_raster = ax.twinx()
-            for i, stype in enumerate(['L2_pyramidal', 'L5_pyramidal']):
+            for i, stype in enumerate(raster_cell_types):
                 mask = spike_types_all == stype
                 ax_raster.scatter(
                     spike_times_all[mask],
@@ -745,6 +753,8 @@ def plot_lfp_morph_csd(
     ext_inputs=None,
     spike_types=None,
     overlay_raster_on_csd=False,
+    raster_colors=None,
+    raster_cell_types=None,
 ):
     import matplotlib.pyplot as plt
 
@@ -838,6 +848,8 @@ def plot_lfp_morph_csd(
         unit_csd=unit_csd, 
         overlay_raster_on_csd=overlay_raster_on_csd,
         cell_response=net.cell_response,
+        raster_colors=raster_colors,
+        raster_cell_types=raster_cell_types,
         show=False,
     )
 
