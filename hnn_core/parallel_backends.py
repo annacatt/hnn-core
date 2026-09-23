@@ -47,10 +47,13 @@ def _gather_trial_data(sim_data, net, n_trials, postproc, bsl_cor="jones"):
         name: entry["cell_metadata"] for name, entry in net.cell_types.items()
     }
     cell_type_names = list(net.cell_types.keys())
+    tm_currents = net._params["tm_currents"]
+
     cell_response = CellResponse(
         cell_type_names=cell_type_names,
         cell_type_metadata=cell_type_metadata,
         times=sim_data[0]["times"],
+        tm_currents=tm_currents,
     )
     net.cell_response = cell_response
 
@@ -71,18 +74,9 @@ def _gather_trial_data(sim_data, net, n_trials, postproc, bsl_cor="jones"):
         net.cell_response._isec.append(sim_data[idx]["isec"])
         net.cell_response._ca.append(sim_data[idx]["ca"])
         # [new]
-        net.cell_response._agg_i_mem.append(sim_data[idx]["agg_i_mem"])
-        net.cell_response._agg_ina.append(sim_data[idx]["agg_ina"])
-        net.cell_response._agg_ik.append(sim_data[idx]["agg_ik"])
-        net.cell_response._agg_i_cap.append(sim_data[idx]["agg_i_cap"])
-        net.cell_response._ina_hh2.append(sim_data[idx]["ina_hh2"])
-        net.cell_response._ik_hh2.append(sim_data[idx]["ik_hh2"])
-        net.cell_response._ik_kca.append(sim_data[idx]["ik_kca"])
-        net.cell_response._ik_km.append(sim_data[idx]["ik_km"])
-        net.cell_response._ica_ca.append(sim_data[idx]["ica_ca"])
-        net.cell_response._ica_cat.append(sim_data[idx]["ica_cat"])
-        net.cell_response._il_hh2.append(sim_data[idx]["il_hh2"])
-        net.cell_response._i_ar.append(sim_data[idx]["i_ar"])
+        if "tm_currents" in sim_data[idx]:
+            for current, data in sim_data[idx]["tm_currents"].items():
+                net.cell_response._tm_currents[current]["data"].append(data)
         # [end new]
 
         # extracellular array
@@ -676,7 +670,16 @@ class JoblibBackend(object):
 
         _BACKEND = self._old_backend
 
-    def simulate(self, net, tstop, dt, n_trials, postproc=False, bsl_cor="jones"):
+    def simulate(
+        self,
+        net,
+        tstop,
+        dt,
+        n_trials,
+        postproc=False,
+        tm_currents=False,
+        bsl_cor="jones",
+    ):
         """Simulate the HNN model
 
         Parameters

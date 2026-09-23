@@ -4,6 +4,7 @@
 #          Ryan Thorpe <ryan_thorpe@brown.edu>
 #          Mainak Jas <mjas@mgh.harvard.edu>
 
+import copy
 from glob import glob
 from warnings import warn
 
@@ -95,6 +96,7 @@ class CellResponse(object):
         spike_gids=None,
         spike_types=None,
         times=None,
+        tm_currents=None,
     ):
         if spike_times is None:
             spike_times = list()
@@ -133,19 +135,11 @@ class CellResponse(object):
         self._ca = list()
 
         # [new]
-        # initialize lists to store transmenbrane (tm) current recordings
-        self._agg_i_mem = list()  # aggregate tm currents
-        self._agg_ina = list()  # aggregate tm sodium
-        self._agg_ik = list()  # aggregate tm potassium
-        self._agg_i_cap = list()  # aggregate capacitive current
-        self._ina_hh2 = list()  # tm sodium from "hh2"
-        self._ik_hh2 = list()  # tm potassium from "hh2"
-        self._ik_kca = list()  # tm potassium from "kca"
-        self._ik_km = list()  # tm potassium from "km"
-        self._ica_ca = list()  # tm calcium from "ca"
-        self._ica_cat = list()  # tm t-type calcium current from "cat"
-        self._il_hh2 = list()  # leak current from "hh2"
-        self._i_ar = list()  # anomalous rectifier current from "ar"
+        self._tm_currents = dict()
+        if tm_currents is not None:
+            self._tm_currents = copy.deepcopy(tm_currents)
+            for current_key in self._tm_currents.keys():
+                self._tm_currents[current_key]["data"] = list()
         # [end new]
 
         if times is not None:
@@ -173,36 +167,11 @@ class CellResponse(object):
             and self._spike_gids == other._spike_gids
             and self._spike_types == other._spike_types
             # [new]
-            and self._agg_i_mem == other._agg_i_mem
-            and self._agg_ina == other._agg_ina
-            and self._agg_ik == other._agg_ik
-            and self._agg_i_cap == other._agg_i_cap
-            and self._ina_hh2 == other._ina_hh2
-            and self._ik_hh2 == other._ik_hh2
-            and self._ik_kca == other._ik_kca
-            and self._ik_km == other._ik_km
-            and self._ica_ca == other._ica_ca
-            and self._ica_cat == other._ica_cat
-            and self._il_hh2 == other._il_hh2
-            and self._i_ar == other._i_ar
+            and self._tm_currents == other._tm_currents
             # [end new]
             and self._vsec == other._vsec
             and self._isec == other._isec
             and self._ca == other._ca
-            # [new]
-            and self.agg_i_mem == other.agg_i_mem
-            and self.agg_ina == other.agg_ina
-            and self.agg_ik == other.agg_ik
-            and self.agg_i_cap == other.agg_i_cap
-            and self.ina_hh2 == other.ina_hh2
-            and self.ik_hh2 == other.ik_hh2
-            and self.ik_kca == other.ik_kca
-            and self.ik_km == other.ik_km
-            and self.ica_ca == other.ica_ca
-            and self.ica_cat == other.ica_cat
-            and self.il_hh2 == other.il_hh2
-            and self.i_ar == other.i_ar
-            # [end new]
             and self.vsec == other.vsec
             and self.isec == other.isec
             and self.ca == other.ca
@@ -254,22 +223,8 @@ class CellResponse(object):
 
     # [new]
     @property
-    def transmembrane_currents(self):
-        return {
-            "agg_i_mem": self._agg_i_mem,
-            #"agg_ina": self._agg_ina,
-            #"agg_ik": self._agg_ik,
-            "agg_i_cap": self._agg_i_cap,
-            "ina_hh2": self._ina_hh2,
-            "ik_hh2": self._ik_hh2,
-            "ik_kca": self._ik_kca,
-            "ik_km": self._ik_km,
-            "ica_ca": self._ica_ca,
-            "ica_cat": self._ica_cat,
-            "il_hh2": self._il_hh2,
-            "i_ar": self._i_ar,
-        }
-
+    def tm_currents(self):
+        return self._tm_currents
     # [end new]
 
     @property
@@ -869,24 +824,7 @@ class CellResponse(object):
             else:
                 return obj
 
-        transmembrane_currents_keys = [
-            "agg_i_mem",
-            "agg_ina",
-            "agg_ik",
-            "agg_i_cap",
-            "ina_hh2",
-            "ik_hh2",
-            "ik_kca",
-            "ik_km",
-            "ica_ca",
-            "ica_cat",
-            "il_hh2",
-            "i_ar",
-        ]
-
-        for name in transmembrane_currents_keys:
-            data = getattr(self, name)
-            cell_response_data[name] = _keys_to_strings(data)
+        cell_response_data["tm_currents"] = _keys_to_strings(self.tm_currents)
         # [end new]
 
         cell_response_data["times"] = self.times

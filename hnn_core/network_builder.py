@@ -129,77 +129,15 @@ def _simulate_single_trial(net, tstop, dt, trial_idx):
         return obj.to_python()
 
     # apply helper fxn to each transmembrane current to convert h vectors to lists
-    agg_i_mem_py = dict()
-    for gid, agg_i_mem_dict in neuron_net._agg_i_mem.items():
-        agg_i_mem_py[gid] = dict()
-        for sec_name, agg_i_mem in agg_i_mem_dict.items():
-            agg_i_mem_py[gid][sec_name] = hvecs_to_lists(agg_i_mem)
-
-    agg_ina_py = dict()
-    for gid, agg_ina_dict in neuron_net._agg_ina.items():
-        agg_ina_py[gid] = dict()
-        for sec_name, agg_ina in agg_ina_dict.items():
-            agg_ina_py[gid][sec_name] = hvecs_to_lists(agg_ina)
-
-    agg_ik_py = dict()
-    for gid, agg_ik_dict in neuron_net._agg_ik.items():
-        agg_ik_py[gid] = dict()
-        for sec_name, agg_ik in agg_ik_dict.items():
-            agg_ik_py[gid][sec_name] = hvecs_to_lists(agg_ik)
-
-    agg_i_cap_py = dict()
-    for gid, agg_i_cap_dict in neuron_net._agg_i_cap.items():
-        agg_i_cap_py[gid] = dict()
-        for sec_name, agg_i_cap in agg_i_cap_dict.items():
-            agg_i_cap_py[gid][sec_name] = hvecs_to_lists(agg_i_cap)
-
-    ina_hh2_py = dict()
-    for gid, ina_hh2_dict in neuron_net._ina_hh2.items():
-        ina_hh2_py[gid] = dict()
-        for sec_name, ina_hh2 in ina_hh2_dict.items():
-            ina_hh2_py[gid][sec_name] = hvecs_to_lists(ina_hh2)
-
-    ik_hh2_py = dict()
-    for gid, ik_hh2_dict in neuron_net._ik_hh2.items():
-        ik_hh2_py[gid] = dict()
-        for sec_name, ik_hh2 in ik_hh2_dict.items():
-            ik_hh2_py[gid][sec_name] = hvecs_to_lists(ik_hh2)
-
-    ik_kca_py = dict()
-    for gid, ik_kca_dict in neuron_net._ik_kca.items():
-        ik_kca_py[gid] = dict()
-        for sec_name, ik_kca in ik_kca_dict.items():
-            ik_kca_py[gid][sec_name] = hvecs_to_lists(ik_kca)
-
-    ik_km_py = dict()
-    for gid, ik_km_dict in neuron_net._ik_km.items():
-        ik_km_py[gid] = dict()
-        for sec_name, ik_km in ik_km_dict.items():
-            ik_km_py[gid][sec_name] = hvecs_to_lists(ik_km)
-
-    ica_ca_py = dict()
-    for gid, ica_ca_dict in neuron_net._ica_ca.items():
-        ica_ca_py[gid] = dict()
-        for sec_name, ica_ca in ica_ca_dict.items():
-            ica_ca_py[gid][sec_name] = hvecs_to_lists(ica_ca)
-
-    ica_cat_py = dict()
-    for gid, ica_cat_dict in neuron_net._ica_cat.items():
-        ica_cat_py[gid] = dict()
-        for sec_name, ica_cat in ica_cat_dict.items():
-            ica_cat_py[gid][sec_name] = hvecs_to_lists(ica_cat)
-
-    il_hh2_py = dict()
-    for gid, il_hh2_dict in neuron_net._il_hh2.items():
-        il_hh2_py[gid] = dict()
-        for sec_name, il_hh2 in il_hh2_dict.items():
-            il_hh2_py[gid][sec_name] = hvecs_to_lists(il_hh2)
-
-    i_ar_py = dict()
-    for gid, i_ar_dict in neuron_net._i_ar.items():
-        i_ar_py[gid] = dict()
-        for sec_name, i_ar in i_ar_dict.items():
-            i_ar_py[gid][sec_name] = hvecs_to_lists(i_ar)
+    tm_currents_py = dict()
+    if isinstance(neuron_net.tm_currents, dict):
+        for current_key in neuron_net.tm_currents.keys():
+            tm_currents_py[current_key] = dict()
+            if current_key in neuron_net.tm_currents_data:
+                for gid, sec_dict in neuron_net.tm_currents_data[current_key].items():
+                    tm_currents_py[current_key][gid] = dict()
+                    for sec_name, vec in sec_dict.items():
+                        tm_currents_py[current_key][gid][sec_name] = hvecs_to_lists(vec)
     # [end new]
 
     dipole_cell_types = [
@@ -245,18 +183,7 @@ def _simulate_single_trial(net, tstop, dt, trial_idx):
         "isec": isec_py,
         "ca": ca_py,
         # [new]
-        "agg_i_mem": agg_i_mem_py,
-        "agg_ina": agg_ina_py,
-        "agg_ik": agg_ik_py,
-        "agg_i_cap": agg_i_cap_py,
-        "ina_hh2": ina_hh2_py,
-        "ik_hh2": ik_hh2_py,
-        "ik_kca": ik_kca_py,
-        "ik_km": ik_km_py,
-        "ica_ca": ica_ca_py,
-        "ica_cat": ica_cat_py,
-        "il_hh2": il_hh2_py,
-        "i_ar": i_ar_py,
+        "tm_currents": tm_currents_py,
         # [end new]
         "rec_data": rec_arr_py,
         "rec_times": rec_times_py,
@@ -421,6 +348,7 @@ class NetworkBuilder(object):
 
     def __init__(self, net, trial_idx=0):
         self.net = net
+        self.tm_currents=net._params.get("tm_currents", None)
         self.trial_idx = trial_idx
 
         # When computing the network dynamics in parallel, the nodes of the
@@ -449,18 +377,10 @@ class NetworkBuilder(object):
         self._isec = dict()
         self._ca = dict()
         # [new]
-        self._agg_i_mem = dict()  # aggregate tm currents
-        self._agg_ina = dict()  # aggregate tm sodium
-        self._agg_ik = dict()  # aggregate tm potassium
-        self._agg_i_cap = dict()  # aggregate capacitive current
-        self._ina_hh2 = dict()  # tm sodium from "hh2"
-        self._ik_hh2 = dict()  # tm potassium from "hh2"
-        self._ik_kca = dict()  # tm potassium from "kca"
-        self._ik_km = dict()  # tm potassium from "km"
-        self._ica_ca = dict()  # tm calcium from "ca"
-        self._ica_cat = dict()  # tm t-type calcium current from "cat"
-        self._il_hh2 = dict()  # leak current from "hh2"
-        self._i_ar = dict()  # anomalous rectifier current from "ar"
+        self.tm_currents_data = dict()
+        if isinstance(self.tm_currents, dict):
+            for current_key in self.tm_currents.keys():
+                self.tm_currents_data[current_key] = dict()
         # [end new]
         self._nrn_rec_arrays = dict()
         self._nrn_rec_callbacks = list()
@@ -471,30 +391,15 @@ class NetworkBuilder(object):
         if len(self.net.rec_arrays) > 0:
             self._expose_imem = True
         # [new]
-        # conditionally expose "record_agg_i_mem"
-        if net._params["record_agg_i_mem"]:
-            self._expose_imem = True
+        # conditionally expose "agg_i_mem"
+        if self.tm_currents is not None:
+            for _, metadata in self.tm_currents.items():
+                if metadata["type"] == "derived":
+                    self._record_derived_currents()
+                    break
         # [end new]
-
         self._rank = 0
         self._build()
-
-    # [new]
-    def _register_imem_callback(self):
-        """
-        Register a CVode callback to gather i_mem for each cell at each step.
-        """
-
-        def _gather_all_cells_imem():
-            for cell in self._cells:
-                if hasattr(cell, "_gather_imem_data"):
-                    cell._gather_imem_data()
-
-        cvode = h.CVode()
-        cvode.use_fast_imem(1)
-        cvode.extra_scatter_gather(0, _gather_all_cells_imem)
-
-    # [end new]
 
     def _build(self):
         """Building the network in NEURON."""
@@ -521,40 +426,14 @@ class NetworkBuilder(object):
         record_vsec = self.net._params["record_vsec"]
         record_isec = self.net._params["record_isec"]
         record_ca = self.net._params["record_ca"]
-        # [new]
-        record_agg_i_mem = self.net._params["record_agg_i_mem"]
-        record_agg_ina = self.net._params["record_agg_ina"]
-        record_agg_ik = self.net._params["record_agg_ik"]
-        record_agg_i_cap = self.net._params["record_agg_i_cap"]
-        record_ina_hh2 = self.net._params["record_ina_hh2"]
-        record_ik_hh2 = self.net._params["record_ik_hh2"]
-        record_ik_kca = self.net._params["record_ik_kca"]
-        record_ik_km = self.net._params["record_ik_km"]
-        record_ica_ca = self.net._params["record_ica_ca"]
-        record_ica_cat = self.net._params["record_ica_cat"]
-        record_il_hh2 = self.net._params["record_il_hh2"]
-        record_i_ar = self.net._params["record_i_ar"]
-        # [end new]
         self._create_cells_and_drives(
             threshold=self.net._params["threshold"],
             record_vsec=record_vsec,
             record_isec=record_isec,
             record_ca=record_ca,
-            # [new]
-            record_agg_i_mem=record_agg_i_mem,
-            record_agg_ina=record_agg_ina,
-            record_agg_ik=record_agg_ik,
-            record_agg_i_cap=record_agg_i_cap,
-            record_ina_hh2=record_ina_hh2,
-            record_ik_hh2=record_ik_hh2,
-            record_ik_kca=record_ik_kca,
-            record_ik_km=record_ik_km,
-            record_ica_ca=record_ica_ca,
-            record_ica_cat=record_ica_cat,
-            record_il_hh2=record_il_hh2,
-            record_i_ar=record_i_ar,
-            # [end new]
         )
+
+        self.state_init()
 
         # set to record spikes, somatic voltages, and extracellular potentials
         self._spike_times = h.Vector()
@@ -642,18 +521,6 @@ class NetworkBuilder(object):
         record_isec=False,
         record_ca=False,
         # [new]
-        record_agg_i_mem=False,
-        record_agg_ina=False,
-        record_agg_ik=False,
-        record_agg_i_cap=False,
-        record_ina_hh2=False,
-        record_ik_hh2=False,
-        record_ik_kca=False,
-        record_ik_km=False,
-        record_ica_ca=False,
-        record_ica_cat=False,
-        record_il_hh2=False,
-        record_i_ar=False,
         # [end new]
     ):
         """Parallel create cells AND external drives
@@ -713,18 +580,7 @@ class NetworkBuilder(object):
                     record_isec,
                     record_ca,
                     # [new]
-                    record_agg_i_mem,
-                    record_agg_ina,
-                    record_agg_ik,
-                    record_agg_i_cap,
-                    record_ina_hh2,
-                    record_ik_hh2,
-                    record_ik_kca,
-                    record_ik_km,
-                    record_ica_ca,
-                    record_ica_cat,
-                    record_il_hh2,
-                    record_i_ar,
+                    self.tm_currents,
                     # [end new]
                 )
 
@@ -744,22 +600,13 @@ class NetworkBuilder(object):
                 self._drive_cells.append(drive_cell)
 
         # [new]
-        # i_mem recording setup
-        if record_agg_i_mem:
-            # initialize PtrVector/Vector for each cell
-            for cell in self._cells:
-                if hasattr(cell, "_setup_imem_recording"):
-                    cell._setup_imem_recording()
-
-            # global callback for CVode
-            def _register_imem_callback():
-                for cell in self._cells:
-                    if hasattr(cell, "_gather_imem_data"):
-                        cell._gather_imem_data()
-
-            cvode = h.CVode()
-            cvode.use_fast_imem(1)  # ensure fast i_mem recording is active
-            cvode.extra_scatter_gather(0, _register_imem_callback)
+        # setup i_mem recording in the global solver if required
+        #self._record_derived_currents()
+        if self.tm_currents is not None:
+            for _, metadata in self.tm_currents.items():
+                if metadata["type"] == "derived":
+                    self._record_derived_currents()
+                    break
         # [end new]
 
     # connections:
@@ -827,6 +674,30 @@ class NetworkBuilder(object):
                         )
                         self.ncs[connection_name].append(nc)
 
+    # [new]
+    def _record_derived_currents(self):
+        derived_currents = []
+        for current_name, current_recording_metadata in self.tm_currents.items():
+            if current_recording_metadata["type"] == "derived":
+                derived_currents.append(current_name)
+
+        if derived_currents:
+            # ensure fast i_mem recording is enabled in the global solver
+            cvode = h.CVode()
+            cvode.use_fast_imem(1)
+
+            # initialize current recordings for each cell
+            for cell in self._cells:
+                if hasattr(cell, "_setup_imem_recording"):
+                    for current_name in derived_currents:
+                        cell._setup_imem_recording(
+                            current_name=current_name,
+                            ref=self.tm_currents[current_name]["ref"],
+                            recorded_sections=self.tm_currents[current_name]["recorded_sections"],
+                        )
+    # [end new]
+
+    
     def _connect_celltypes_using_dataframe(self):
         """
         Create synaptic connections between cell types using the connectivity DataFrame.
@@ -939,18 +810,12 @@ class NetworkBuilder(object):
             self._isec[cell.gid] = cell.isec
             self._ca[cell.gid] = cell.ca
             # [new]
-            self._agg_i_mem[cell.gid] = cell.agg_i_mem
-            self._agg_ina[cell.gid] = cell.agg_ina
-            self._agg_ik[cell.gid] = cell.agg_ik
-            self._agg_i_cap[cell.gid] = cell.agg_i_cap
-            self._ina_hh2[cell.gid] = cell.ina_hh2
-            self._ik_hh2[cell.gid] = cell.ik_hh2
-            self._ik_kca[cell.gid] = cell.ik_kca
-            self._ik_km[cell.gid] = cell.ik_km
-            self._ica_ca[cell.gid] = cell.ica_ca
-            self._ica_cat[cell.gid] = cell.ica_cat
-            self._il_hh2[cell.gid] = cell.il_hh2
-            self._i_ar[cell.gid] = cell.i_ar
+            if isinstance(self.tm_currents, dict):
+                for current_key in self.tm_currents.keys():
+                    if current_key in cell.tm_currents_data:
+                        self.tm_currents_data[current_key][cell.gid] = (
+                            cell.tm_currents_data[current_key]
+                        )
             # [end new]
 
         # reduce across threads
@@ -964,18 +829,7 @@ class NetworkBuilder(object):
         isec_list = _PC.py_gather(self._isec, 0)
         ca_list = _PC.py_gather(self._ca, 0)
         # [new]
-        agg_i_mem_list = _PC.py_gather(self._agg_i_mem, 0)
-        agg_ina_list = _PC.py_gather(self._agg_ina, 0)
-        agg_ik_list = _PC.py_gather(self._agg_ik, 0)
-        agg_i_cap_list = _PC.py_gather(self._agg_i_cap, 0)
-        ina_hh2_list = _PC.py_gather(self._ina_hh2, 0)
-        ik_hh2_list = _PC.py_gather(self._ik_hh2, 0)
-        ik_kca_list = _PC.py_gather(self._ik_kca, 0)
-        ik_km_list = _PC.py_gather(self._ik_km, 0)
-        ica_ca_list = _PC.py_gather(self._ica_ca, 0)
-        ica_cat_list = _PC.py_gather(self._ica_cat, 0)
-        il_hh2_list = _PC.py_gather(self._il_hh2, 0)
-        i_ar_list = _PC.py_gather(self._i_ar, 0)
+        tm_currents_list = _PC.py_gather(self.tm_currents_data, 0)
         # [end new]
 
         # combine spiking data from each proc
@@ -995,30 +849,10 @@ class NetworkBuilder(object):
             for ca in ca_list:
                 self._ca.update(ca)
             # [new]
-            for agg_i_mem in agg_i_mem_list:
-                self._agg_i_mem.update(agg_i_mem)
-            for agg_ina in agg_ina_list:
-                self._agg_ina.update(agg_ina)
-            for agg_ik in agg_ik_list:
-                self._agg_ik.update(agg_ik)
-            for agg_i_cap in agg_i_cap_list:
-                self._agg_i_cap.update(agg_i_cap)
-            for ina_hh2 in ina_hh2_list:
-                self._ina_hh2.update(ina_hh2)
-            for ik_hh2 in ik_hh2_list:
-                self._ik_hh2.update(ik_hh2)
-            for ik_kca in ik_kca_list:
-                self._ik_kca.update(ik_kca)
-            for ik_km in ik_km_list:
-                self._ik_km.update(ik_km)
-            for ica_ca in ica_ca_list:
-                self._ica_ca.update(ica_ca)
-            for ica_cat in ica_cat_list:
-                self._ica_cat.update(ica_cat)
-            for il_hh2 in il_hh2_list:
-                self._il_hh2.update(il_hh2)
-            for i_ar in i_ar_list:
-                self._i_ar.update(i_ar)
+            if tm_currents_list is not None:
+                for rank_data in tm_currents_list:
+                    for current_key, gid_dict in rank_data.items():
+                        self.tm_currents_data[current_key].update(gid_dict)
             # [end new]
 
         _PC.barrier()  # get all nodes to this place before continuing

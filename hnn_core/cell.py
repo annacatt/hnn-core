@@ -383,7 +383,17 @@ class Cell:
         )
     """
 
-    def __init__(self, name, pos, sections, synapses, sect_loc, cell_tree, gid=None):
+    def __init__(
+        self,
+        name,
+        pos,
+        sections,
+        synapses,
+        sect_loc,
+        cell_tree,
+        gid=None,
+        tm_currents=None,
+    ):
         self.name = name
         self.pos = pos
         for section in sections.values():
@@ -402,19 +412,17 @@ class Cell:
         self.isec = dict()
         self.ca = dict()
         # [new]
-        # initialize dicts to store transmenbrane (tm) current recordings
-        self.agg_i_mem = dict()  # aggregate tm currents
-        self.agg_ina = dict()  # aggregate tm sodium
-        self.agg_ik = dict()  # aggregate tm potassium
-        self.agg_i_cap = dict()  # aggregate capacitive current
-        self.ina_hh2 = dict()  # tm sodium from "hh2"
-        self.ik_hh2 = dict()  # tm potassium from "hh2"
-        self.ik_kca = dict()  # tm potassium from "kca"
-        self.ik_km = dict()  # tm potassium from "km"
-        self.ica_ca = dict()  # tm calcium from "ca"
-        self.ica_cat = dict()  # tm t-type calcium current from "cat"
-        self.il_hh2 = dict()  # leak current from "hh2"
-        self.i_ar = dict()  # anomalous rectifier current from "ar"
+
+        # new dynamic tm current recording functionality
+        # create containers for pointers to NEURON vectors; used during
+        # recording when calling _simulate_single_trial()
+        self.tm_currents = tm_currents
+        self.tm_currents_data = dict()
+        if isinstance(self.tm_currents, dict):
+            for current_key in self.tm_currents.keys():
+                self.tm_currents_data[current_key] = dict()
+
+
         # [end new]
         # insert iclamp
         self.list_IClamp = list()
@@ -506,18 +514,7 @@ class Cell:
         cell_data["isec"] = self.isec
         cell_data["ca"] = self.ca
         # [new]
-        cell_data["agg_i_mem"] = self.agg_i_mem
-        cell_data["agg_ina"] = self.agg_ina
-        cell_data["agg_ik"] = self.agg_ik
-        cell_data["agg_i_cap"] = self.agg_i_cap
-        cell_data["ina_hh2"] = self.ina_hh2
-        cell_data["ik_hh2"] = self.ik_hh2
-        cell_data["ik_kca"] = self.ik_kca
-        cell_data["ik_km"] = self.ik_km
-        cell_data["ica_ca"] = self.ica_ca
-        cell_data["ica_cat"] = self.ica_cat
-        cell_data["il_hh2"] = self.il_hh2
-        cell_data["i_ar"] = self.i_ar
+        cell_data["tm_currents"] = self.tm_currents_data
         # [end new]
         cell_data["tonic_biases"] = self.tonic_biases
         return cell_data
@@ -878,14 +875,17 @@ class Cell:
             If False, record only from the midpoint (0.5)
         """
         # create an attribute on self to hold the currents
+
         if record_flag == "soma":
-            setattr(self, name, dict.fromkeys(["soma"]))
+            sections = dict.fromkeys(["soma"])
         elif record_flag == "all":
-            setattr(self, name, dict.fromkeys(section_names))
+            sections = dict.fromkeys(section_names)
         else:
             return
 
-        currents = getattr(self, name)
+        self.tm_currents_data[name] = sections
+
+        currents = self.tm_currents_data[name]
 
         # loop over all sections
         for sec_name in currents:
@@ -929,7 +929,20 @@ class Cell:
 
                     # if no mechanism is given, record directly from the segment
                     if mech is None:
-                        if hasattr(segment, ref):
+                        # special handling for _ref_i (non-specific aggregate)
+                        if ref == "_ref_i":
+                            try:
+                                # attempt to access the pointer.
+                                # if it doesn't exist, NEURON raises AttributeError.
+                                ptr = getattr(segment, ref)
+                                currents[sec_name][seg_key] = h.Vector()
+                                currents[sec_name][seg_key].record(ptr)
+                            except AttributeError:
+                                # this segment has no non-specific mechanisms
+                                # (like basket cells)
+                                # we skip recording; the sum will treat this as 0.0
+                                pass
+                        elif hasattr(segment, ref):
                             # attach the h.Vector() recorder
                             currents[sec_name][seg_key] = h.Vector()
                             currents[sec_name][seg_key].record(
@@ -993,10 +1006,28 @@ class Cell:
 
                 # if no mechanism is given, record directly from the segment
                 if mech is None:
-                    if hasattr(seg, ref):
+                    # special handling for _ref_i (non-specific aggregate)
+                    if ref == "_ref_i":
+                        try:
+                            # attempt to access the pointer.
+                            # if it doesn't exist, NEURON raises attributeError.
+                            ptr = getattr(segment, ref)
+                            currents[sec_name][seg_key] = h.Vector()
+                            currents[sec_name][seg_key].record(ptr)
+                        except AttributeError:
+                            # this segment has no non-specific mechanisms
+                            # (like Basket cells)
+                            # we skip recording; the sum will treat this as 0.0
+                            pass
+                    elif hasattr(segment, ref):
                         # attach the h.Vector() recorder
-                        currents[sec_name] = h.Vector()
-                        currents[sec_name].record(getattr(seg, ref))
+                        currents[sec_name][seg_key] = h.Vector()
+                        currents[sec_name][seg_key].record(
+                            getattr(
+                                segment,
+                                ref,
+                            )
+                        )
 
                 # if a mechanism is specified, record from the mechanism
                 # if the conditions are met:
@@ -1007,43 +1038,45 @@ class Cell:
                         # attach the h.Vector() recorder
                         currents[sec_name] = h.Vector()
                         currents[sec_name].record(getattr(getattr(seg, mech), ref))
-                        
-    def _setup_imem_recording(self):
+
+    def _setup_imem_recording(
+        self,
+        current_name,
+        ref,
+        recorded_sections,
+    ):
         """
         This functions handles the recording of the *total* transmembrane current,
         "i_mem", using pointer vectors (h.PtrVector)
 
-        This is required because i_mem can't be passively recorded at each time step
-        by attaching h.Vector().record, unlike the other transmembrane currents.
-        The total transmembrane current is only exposed and caluted when explicitly
-        requested, which is done by calling _CVODE.use_fast_imem(1)
+        Since i_membrane and i_cap are *derived* variables, they can't be passively
+        recorded at each time step by attaching h.Vector().record to the Cell, as is
+        done for the other transmembrane currents.
+
+        These are the *only* two transmembrane currents that require a change to
+        the global solver. Specifically, "use_fast_imem" must be enabled. This is
+        done in NetworkBuilder.create_cells_and_drives() by calling:
+            cvode = h.CVode()
+            cvode.use_fast_imem(1)
+
+        The application of "use_fast_imem" requires that ref variables are recorded at
+        the *segment* level. Therefore, "per_segment" must be set to True in order to
+        record these currents.
         """
-        all_segments = []
-        for sec in self._nrn_sections.values():
-            for seg in sec:
-                all_segments.append(seg)
+        self.tm_currents_data[current_name] = {}
 
-        n_segs = len(all_segments)
-        self._imem_ptrvec = h.PtrVector(n_segs)
-        self._imem_vec = h.Vector(n_segs)
+        if recorded_sections == "all":
+            sections = self._nrn_sections
+        elif recorded_sections == "soma":
+            sections = {"soma": self._nrn_sections["soma"]}
 
-        for idx, seg in enumerate(all_segments):
-            self._imem_ptrvec.pset(idx, seg._ref_i_membrane_)
-
-        # store per-segment h.Vectors for direct access
-        self.agg_i_mem = {}
-        for sec_name, sec in self._nrn_sections.items():
-            self.agg_i_mem[sec_name] = {}
+        for sec_name, sec in sections.items():
+            self.tm_currents_data[current_name][sec_name] = {}
             for i, seg in enumerate(sec):
                 seg_key = f"seg_{i + 1}"
-                self.agg_i_mem[sec_name][seg_key] = h.Vector()
-                self.agg_i_mem[sec_name][seg_key].record(seg._ref_i_membrane_)
-
-    def _gather_imem_data(self):
-        """
-        Gathers the PtrVector values into h.Vector after each CVode step.
-        """
-        self._imem_ptrvec.gather(self._imem_vec)
+                vec = h.Vector()
+                vec.record(getattr(seg, ref))
+                self.tm_currents_data[current_name][sec_name][seg_key] = vec
 
     # [end new]
 
@@ -1053,18 +1086,7 @@ class Cell:
         record_isec=False,
         record_ca=False,
         # [new]
-        record_agg_i_mem=False,
-        record_agg_ina=False,
-        record_agg_ik=False,
-        record_agg_i_cap=False,
-        record_ina_hh2=False,
-        record_ik_hh2=False,
-        record_ik_kca=False,
-        record_ik_km=False,
-        record_ica_ca=False,
-        record_ica_cat=False,
-        record_il_hh2=False,
-        record_i_ar=False,
+        tm_currents=False,
         # [end new]
     ):
         """Record current and voltage from all sections
@@ -1129,105 +1151,23 @@ class Cell:
                     self.ca[sec_name].record(self._nrn_sections[sec_name](0.5)._ref_cai)
         # [new]
         # transmembrane currents
-        if record_agg_i_mem:
-            self._setup_imem_recording()
+        if isinstance(tm_currents, dict):
+            for current_name, values in tm_currents.items():
+                current_type = values["type"]
+                mech = values["mech"]
+                ref = values["ref"]
+                per_segment = values["per_segment"]
+                sections = values["recorded_sections"]
 
-        self._record_transmembrane_currents(
-            record_agg_ina,
-            "agg_ina",
-            section_names,
-            ref="_ref_ina",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_agg_ik,
-            "agg_ik",
-            section_names,
-            ref="_ref_ik",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_agg_i_cap,
-            "agg_i_cap",
-            section_names,
-            mech=None,
-            ref="_ref_i_cap",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_ina_hh2,
-            "ina_hh2",
-            section_names,
-            mech="hh2",
-            ref="_ref_ina",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_ik_hh2,
-            "ik_hh2",
-            section_names,
-            mech="hh2",
-            ref="_ref_ik",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_ik_kca,
-            "ik_kca",
-            section_names,
-            mech="kca",
-            ref="_ref_ik",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_ik_km,
-            "ik_km",
-            section_names,
-            mech="km",
-            ref="_ref_ik",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_ica_ca,
-            "ica_ca",
-            section_names,
-            mech="ca",
-            ref="_ref_ica",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_ica_cat,
-            "ica_cat",
-            section_names,
-            mech="cat",
-            ref="_ref_i",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_il_hh2,
-            "il_hh2",
-            section_names,
-            mech="hh2",
-            ref="_ref_il",
-            per_segment=True,
-        )
-
-        self._record_transmembrane_currents(
-            record_i_ar,
-            "i_ar",
-            section_names,
-            mech="ar",
-            ref="_ref_i",
-            per_segment=True,
-        )
+                if current_type == "ionic":
+                    self._record_transmembrane_currents(
+                        record_flag=sections,
+                        name=current_name,
+                        section_names=section_names,
+                        mech=mech,
+                        ref=ref,
+                        per_segment=per_segment,
+                    )
         # [end new]
 
     def syn_create(self, secloc, **kwargs):
