@@ -32,7 +32,7 @@ ENDCOMMENT
 NEURON {
   SUFFIX nas_golomb2007
   USEION na READ ena WRITE ina
-  RANGE gbar, g
+  RANGE gbar, g, ina
 }
 
 UNITS {

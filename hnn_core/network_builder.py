@@ -433,7 +433,7 @@ class NetworkBuilder(object):
             record_ca=record_ca,
         )
 
-        self.state_init()
+        #self.state_init()
 
         # set to record spikes, somatic voltages, and extracellular potentials
         self._spike_times = h.Vector()

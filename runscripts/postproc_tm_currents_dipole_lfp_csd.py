@@ -36,6 +36,7 @@ from numpy.linalg import norm
 
 # Channels exposed by the tm_currents branch. These are the currents in Jones 2009.
 DENSITY_CHANNELS = {
+    # Neymotin 2020
     #"agg_ina",
     #"agg_ik",
     "agg_i_cap",
@@ -47,7 +48,26 @@ DENSITY_CHANNELS = {
     "ica_cat",
     "il_hh2",
     "i_ar",
+    # duecker_ET_model
+    "ina_NaTa_t_hay2011",
+    "ina_NaTa_t_32d_hay2011",
+    "ina_NaTs2_t_hay2011",
+    "ina_NaTs2_t_32d_hay2011",
+    "ina_Nap_Et2_hay2011",
+    "ina_nas_golomb2007",
+    "ik_SKv3_1_hay2011",
+    "ik_SK_E2_hay2011",
+    "ik_Im_hay2011",
+    "ik_K_Pst_hay2011",
+    "ik_K_Tst_hay2011",
+    "ik_kdr_golomb2007",
+    "ik_kd_golomb2007",
+    "ica_Ca_HVA_hay2011",
+    "ica_Ca_LVAst_hay2011",
+    "ihcn_Ih_hay2011",
+    "i_pas",
 }
+
 ABSOLUTE_NA_CHANNELS = {"agg_i_mem"}
 SUPPORTED_INTRINSIC_CHANNELS = DENSITY_CHANNELS | ABSOLUTE_NA_CHANNELS
 
@@ -141,9 +161,10 @@ def _pick_midpoint_segments(nseg: int):#, mode: str = "split_even"):
     )
     '''
 
+#def _channel_data_for_gid(net, trial_idx: int, gid: int, channel: str):
+#    return net.cell_response.transmembrane_currents[channel][trial_idx][gid]
 def _channel_data_for_gid(net, trial_idx: int, gid: int, channel: str):
-    return net.cell_response.transmembrane_currents[channel][trial_idx][gid]
-
+    return _channel_data(net.cell_response, channel)[trial_idx][gid]
 
 def _synaptic_data_for_gid(net, trial_idx: int, gid: int):
     return net.cell_response.isec[trial_idx][gid]
@@ -2182,18 +2203,45 @@ def convert_currents_to_numpy(net, channels=None, include_isec=True,
             for trial_data in getattr(cr, attr):
                 _to_numpy_nested(trial_data)
 
+def _list_channels(cell_response):
+    """Channel names: new layout (tm_currents) or old (transmembrane_currents)."""
+    tm = getattr(cell_response, "tm_currents", None)
+    if tm:
+        return list(tm.keys())
+    return list(getattr(cell_response, "transmembrane_currents", {}).keys())
+
+
+def _channel_data(cell_response, channel):
+    """List of per-trial dicts for one channel, in either layout."""
+    tm = getattr(cell_response, "tm_currents", None)
+    if tm and channel in tm:
+        return tm[channel]["data"]
+    return getattr(cell_response, f"_{channel}")
+
+
+def _downsample_nested(d, step):
+    """Recursively downsample every leaf sequence in a nested dict, in place."""
+    for key, value in d.items():
+        if isinstance(value, dict):
+            _downsample_nested(value, step)
+        elif value is not None:          # e.g. sections with no calcium recording
+            d[key] = value[::step]
 
 def downsample_currents(net, step=2, channels=None, include_isec=False,
                          include_vsec=False, include_ca=False):
     cell_response = net.cell_response
 
     if channels is None:
-        channels = list(cell_response.transmembrane_currents.keys())
+        channels = _list_channels(cell_response) #list(cell_response.transmembrane_currents.keys())
 
     # downsample the shared time vector
     cell_response._times = cell_response.times[::step]
 
     # transmembrane_currents: channel -> trial -> gid -> section -> segment -> values
+    for channel in channels:
+        for trial_data in _channel_data(cell_response, channel):
+            _downsample_nested(trial_data, step)
+    '''
     for channel in channels:
         channel_data = getattr(cell_response, f"_{channel}")
         for trial_data in channel_data:
@@ -2201,7 +2249,17 @@ def downsample_currents(net, step=2, channels=None, include_isec=False,
                 for section, segment_dict in section_dict.items():
                     for segment, values in segment_dict.items():
                         segment_dict[segment] = values[::step]
-
+    '''
+    # isec:  trial -> gid -> section -> syn_name -> values
+    # vsec:  trial -> gid -> section -> values
+    # ca:    trial -> gid -> section -> values
+    for flag, attr in [(include_isec, "_isec"),
+                       (include_vsec, "_vsec"),
+                       (include_ca, "_ca")]:
+        if flag:
+            for trial_data in getattr(cell_response, attr):
+                _downsample_nested(trial_data, step)
+    '''
     # isec: trial -> gid -> section -> syn_name -> values
     if include_isec:
         for trial_data in cell_response._isec:
@@ -2223,4 +2281,4 @@ def downsample_currents(net, step=2, channels=None, include_isec=False,
             for gid, section_dict in trial_data.items():
                 for section, values in section_dict.items():
                     section_dict[section] = values[::step]
-
+    '''

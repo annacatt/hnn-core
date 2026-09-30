@@ -103,7 +103,7 @@ INDEPENDENT {t FROM 0 TO 1 WITH 1 (ms)}
 
 NEURON {
 	POINT_PROCESS gabab_neymotin2016
-	RANGE R, G, g
+	RANGE R, G, g, i
 	NONSPECIFIC_CURRENT i
 	GLOBAL Cmax, Cdur
 	GLOBAL K1, K2, K3, K4, KD, Erev, warn, cutoff

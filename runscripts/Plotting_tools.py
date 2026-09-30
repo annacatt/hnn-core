@@ -777,7 +777,8 @@ def plot_lfp_morph_csd(
         ax_hist_lfp = axes['hist_lfp']
         ax_hist_csd = axes['hist_csd']
 
-        spike_types={'Distal': ['evdist'], 'Proximal': ['evprox']}
+        if spike_types is None:
+            spike_types={'Distal': ['evdist'], 'Proximal': ['evprox']}
         spike_colors={'Distal': 'green', 'Proximal': 'red'}
 
         hist_kwargs = dict(

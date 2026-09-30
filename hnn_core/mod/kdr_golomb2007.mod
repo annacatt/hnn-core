@@ -17,7 +17,7 @@ ENDCOMMENT
 NEURON {
   SUFFIX kdr_golomb2007
   USEION k READ ek WRITE ik
-  RANGE gbar, g
+  RANGE gbar, g, ik
 }
 
 UNITS {
