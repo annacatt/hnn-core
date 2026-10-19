@@ -328,7 +328,12 @@ def plot_laminar_csd_AC(
     overlay_raster_on_csd=False,
     cell_response=None,
     raster_colors=None,
-    raster_cell_types=None
+    raster_cell_types=None,
+    spike_overlay="raster",   # "raster" (default), "hist" or "both" (temporary)
+    soma_z=None,              # {cell_type: soma z (µm)}, needed for "hist"
+    hist_bin_ms=1.0,          # histogram bin width (ms)
+    hist_height_um=250.0,     # bar height (µm) of the tallest bin
+    hist_color="k",           # outline colour of the spike histogram
 ):
     import matplotlib.pyplot as plt
     from scipy.interpolate import RectBivariateSpline
@@ -447,20 +452,69 @@ def plot_laminar_csd_AC(
                 spike_types_all = np.array([])
                 spike_gids_all  = np.array([])
 
-            ax_raster = ax.twinx()
-            for i, stype in enumerate(raster_cell_types):
-                mask = spike_types_all == stype
-                ax_raster.scatter(
-                    spike_times_all[mask],
-                    spike_gids_all[mask],
-                    s=2,
-                    color=raster_colors.get(stype, f'C{i}'),
-                    label=stype,
-                    zorder=5,
-                )
+            if spike_overlay in ("hist", "both"):
+                # spike-count histogram per cell type, baseline (0) at its soma depth
+                if soma_z is None:
+                    raise ValueError('spike_overlay="hist" needs soma_z={cell_type: z}')
+                edges = np.arange(times[0], times[-1] + hist_bin_ms, hist_bin_ms)
+                counts = {
+                    stype: np.histogram(
+                        spike_times_all[spike_types_all == stype].astype(float),
+                        bins=edges)[0]
+                    for stype in raster_cell_types
+                }
+                max_count = max([c.max() for c in counts.values()] + [1])
+                um_per_spike = hist_height_um / max_count   # same scale for all types
+                for i, stype in enumerate(raster_cell_types):
+                    z0 = soma_z[stype]
+                    # outline of the histogram (no fill), baseline at the soma depth
+                    ax.stairs(z0 + counts[stype] * um_per_spike, edges, baseline=z0,
+                              fill=False, color=hist_color, lw=0.4, zorder=5)
 
-            ax_raster.invert_yaxis()
-            ax_raster.set_yticks([])
+                # vertical scale bar at the right edge, starting at each soma depth (= 0 spikes).
+                # Length: a round number (1, 2, 5, 10, 20, 50, ...) close to half the tallest bin.
+                from matplotlib.transforms import blended_transform_factory
+                target = max(max_count / 2, 1)
+                scale_n = max(n for n in
+                              [m * 10 ** k for k in range(0, 6) for m in (1, 2, 5)]
+                              if n <= target)
+                bar_len = scale_n * um_per_spike
+                trans = blended_transform_factory(ax.transAxes, ax.transData)  # x: axes, y: data
+                for stype in raster_cell_types:
+                    z0 = soma_z[stype]
+                    ax.plot([0.985, 0.985], [z0, z0 + bar_len], transform=trans,
+                            color='k', lw=2, solid_capstyle='butt', zorder=6)
+                    bin_label = "ms" if hist_bin_ms == 1 else f"{hist_bin_ms:g} ms"
+                    # label above the bar, centred in the gap between two CSD traces
+                    # (traces sit at the contact depths) so it doesn't overlap them
+                    top = z0 + bar_len
+                    zc = np.sort(np.asarray(contact_labels, dtype=float))
+                    spacing = np.median(np.diff(zc))
+                    above = zc[zc > top]
+                    if len(above) == 0:
+                        y_label = top + spacing / 2
+                    elif above[0] - top >= 0.6 * spacing:     # enough room right above the bar
+                        y_label = (top + above[0]) / 2
+                    else:                                    # use the next gap up
+                        y_label = above[0] + spacing / 2
+                    ax.text(0.99, y_label, f"{scale_n} spikes/{bin_label}",
+                            transform=trans, ha='right', va='center',
+                            fontsize=7, color='k', zorder=6)
+            if spike_overlay in ("raster", "both"):  # "both" is temporary, remove later
+                ax_raster = ax.twinx()
+                for i, stype in enumerate(raster_cell_types):
+                    mask = spike_types_all == stype
+                    ax_raster.scatter(
+                        spike_times_all[mask],
+                        spike_gids_all[mask],
+                        s=2,
+                        color=raster_colors.get(stype, f'C{i}'),
+                        label=stype,
+                        zorder=5,
+                    )
+
+                ax_raster.invert_yaxis()
+                ax_raster.set_yticks([])
             #ax_raster.set_ylabel('Cell ID')
             #ax_raster.legend(loc='upper right', fontsize=7, markerscale=4)
     #plt.tight_layout()
@@ -755,10 +809,17 @@ def plot_lfp_morph_csd(
     overlay_raster_on_csd=False,
     raster_colors=None,
     raster_cell_types=None,
+    spike_overlay="raster",   # "raster" (default), "hist" or "both" (temporary)
+    hist_bin_ms=1.0,
+    hist_height_um=250.0,
+    hist_color="k",
 ):
     import matplotlib.pyplot as plt
 
     contact_labels = np.asarray(contact_labels, dtype=float)
+    # soma depth (z, µm) of each cell type, used as the 0 line of the spike histogram
+    soma_z = {ct: float(np.mean(np.asarray(net.pos_dict[ct], dtype=float)[:, 2]))
+              for ct in net.pos_dict if ct in net.cell_types}
 
     if ext_inputs is not None:
         fig, axes = plt.subplot_mosaic(
@@ -851,6 +912,11 @@ def plot_lfp_morph_csd(
         cell_response=net.cell_response,
         raster_colors=raster_colors,
         raster_cell_types=raster_cell_types,
+        spike_overlay=spike_overlay,
+        soma_z=soma_z,
+        hist_bin_ms=hist_bin_ms,
+        hist_height_um=hist_height_um,
+        hist_color=hist_color,
         show=False,
     )
 
@@ -1108,13 +1174,23 @@ def make_csd_contribution_summary_figure(
     csd_syn_gabab_, csd_syn_gabaa_, csd_syn_ampa_, csd_syn_nmda_,
     suptitle="", vmax_row0=None, vmax_row1=None, vmax_residual=None,
     cell_response=None, overlay_raster=False, raster_colors=None,
+    inh_labels=("GABA-B", "GABA-A"),
 ):
-    """Build the 2x6 CSD-contribution summary figure"""
+    """Build the 2x6 CSD-contribution summary figure.
+
+    The two inhibitory panels (2nd row, 2nd and 3rd column) show whatever is passed
+    in the csd_syn_gabab_ and csd_syn_gabaa_ slots, titled with ``inh_labels``:
+
+    - Neymotin/Jones model (default): csd_syn_gabab_, csd_syn_gabaa_,
+      inh_labels=("GABA-B", "GABA-A")
+    - Duecker model (no GABA-B onto pyramidal cells): pass the slow and fast GABA-A
+      CSDs in these two slots, with inh_labels=("GABA-A slow", "GABA-A fast")
+    """
     import matplotlib.pyplot as plt
 
     titles = [
         ["Morphology", "Total (agg_i_mem)", "Capacitive", "Ionic", "Synaptic", ""],
-        ["residual (Tot-(cap+ion+syn))",   "GABA-B",            "GABA-A",     "AMPA",  "NMDA",     ""],
+        ["residual (Tot-(cap+ion+syn))", inh_labels[0], inh_labels[1], "AMPA", "NMDA", ""],
     ]
 
     fig, axes = plt.subplots(
