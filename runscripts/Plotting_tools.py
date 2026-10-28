@@ -333,7 +333,8 @@ def plot_laminar_csd_AC(
     soma_z=None,              # {cell_type: soma z (µm)}, needed for "hist"
     hist_bin_ms=1.0,          # histogram bin width (ms)
     hist_height_um=250.0,     # bar height (µm) of the tallest bin
-    hist_color="k",           # outline colour of the spike histogram
+    hist_color="k",           # outline colour: str (all types) or dict {cell_type: colour}
+    hist_scale="shared",      # "shared": one spikes->µm scale for all types; "per_type": own scale each
 ):
     import matplotlib.pyplot as plt
     from scipy.interpolate import RectBivariateSpline
@@ -433,6 +434,7 @@ def plot_laminar_csd_AC(
                 raster_colors = {
                     'L2_pyramidal': 'C1', 'L5_pyramidal': 'C3',
                     'L2_basket': 'C0', 'L5_basket': 'C4',
+                    'L2_inhibitory': 'C0', 'L5_inhibitory': 'C4',
                 }  
             #if raster_colors is None:
             #    raster_colors = {'L2_pyramidal': 'C1', 'L5_pyramidal': 'C3'}
@@ -463,33 +465,48 @@ def plot_laminar_csd_AC(
                         bins=edges)[0]
                     for stype in raster_cell_types
                 }
-                max_count = max([c.max() for c in counts.values()] + [1])
-                um_per_spike = hist_height_um / max_count   # same scale for all types
+                if hist_scale not in ("shared", "per_type"):
+                    raise ValueError('hist_scale must be "shared" or "per_type"')
+                # colour of each type's outline / scale bar (str -> same colour for all)
+                if isinstance(hist_color, dict):
+                    type_color = {st: hist_color.get(st, "k") for st in raster_cell_types}
+                else:
+                    type_color = {st: hist_color for st in raster_cell_types}
+                # spikes -> µm conversion: one shared factor, or one per cell type
+                max_shared = max([c.max() for c in counts.values()] + [1])
+                max_count = {st: (max_shared if hist_scale == "shared"
+                                  else max(counts[st].max(), 1))
+                             for st in raster_cell_types}
+                um_per_spike = {st: hist_height_um / max_count[st] for st in raster_cell_types}
                 for i, stype in enumerate(raster_cell_types):
                     z0 = soma_z[stype]
                     # outline of the histogram (no fill), baseline at the soma depth
-                    ax.stairs(z0 + counts[stype] * um_per_spike, edges, baseline=z0,
-                              fill=False, color=hist_color, lw=0.4, zorder=5)
+                    ax.stairs(z0 + counts[stype] * um_per_spike[stype], edges, baseline=z0,
+                              fill=False, color=type_color[stype], lw=0.4, zorder=5)
 
-                # vertical scale bar at the right edge, starting at each soma depth (= 0 spikes).
+                # vertical scale bar starting at each soma depth (= 0 spikes).
                 # Length: a round number (1, 2, 5, 10, 20, 50, ...) close to half the tallest bin.
+                # Pyramidal (and other) types: bar at the right edge; inhibitory/basket
+                # types: bar at the left edge, so bars of nearby somata don't overlap.
                 from matplotlib.transforms import blended_transform_factory
-                target = max(max_count / 2, 1)
-                scale_n = max(n for n in
-                              [m * 10 ** k for k in range(0, 6) for m in (1, 2, 5)]
-                              if n <= target)
-                bar_len = scale_n * um_per_spike
                 trans = blended_transform_factory(ax.transAxes, ax.transData)  # x: axes, y: data
+                zc = np.sort(np.asarray(contact_labels, dtype=float))
+                spacing = np.median(np.diff(zc))
+                bin_label = "ms" if hist_bin_ms == 1 else f"{hist_bin_ms:g} ms"
                 for stype in raster_cell_types:
                     z0 = soma_z[stype]
-                    ax.plot([0.985, 0.985], [z0, z0 + bar_len], transform=trans,
-                            color='k', lw=2, solid_capstyle='butt', zorder=6)
-                    bin_label = "ms" if hist_bin_ms == 1 else f"{hist_bin_ms:g} ms"
+                    target = max(max_count[stype] / 2, 1)
+                    scale_n = max(n for n in
+                                  [m * 10 ** k for k in range(0, 6) for m in (1, 2, 5)]
+                                  if n <= target)
+                    bar_len = scale_n * um_per_spike[stype]
+                    left_side = ("inhibitory" in stype) or ("basket" in stype)
+                    x_bar, x_txt, ha = (0.015, 0.01, "left") if left_side else (0.985, 0.99, "right")
+                    ax.plot([x_bar, x_bar], [z0, z0 + bar_len], transform=trans,
+                            color=type_color[stype], lw=2, solid_capstyle='butt', zorder=6)
                     # label above the bar, centred in the gap between two CSD traces
                     # (traces sit at the contact depths) so it doesn't overlap them
                     top = z0 + bar_len
-                    zc = np.sort(np.asarray(contact_labels, dtype=float))
-                    spacing = np.median(np.diff(zc))
                     above = zc[zc > top]
                     if len(above) == 0:
                         y_label = top + spacing / 2
@@ -497,9 +514,20 @@ def plot_laminar_csd_AC(
                         y_label = (top + above[0]) / 2
                     else:                                    # use the next gap up
                         y_label = above[0] + spacing / 2
-                    ax.text(0.99, y_label, f"{scale_n} spikes/{bin_label}",
-                            transform=trans, ha='right', va='center',
-                            fontsize=7, color='k', zorder=6)
+                    ax.text(x_txt, y_label, f"{scale_n} spikes/{bin_label}",
+                            transform=trans, ha=ha, va='center',
+                            fontsize=7, color=type_color[stype], zorder=6)
+                # legend only when the types are told apart by colour: one entry per
+                # colour, labelled by cell class without the layer (e.g. "pyramidal")
+                if len(set(type_color.values())) > 1:
+                    from matplotlib.lines import Line2D
+                    handles = []
+                    for col in dict.fromkeys(type_color.values()):
+                        names = dict.fromkeys(st.split("_", 1)[-1] for st in raster_cell_types
+                                              if type_color[st] == col)
+                        handles.append(Line2D([], [], color=col, lw=1.5, label=", ".join(names)))
+                    ax.legend(handles=handles, loc='best', fontsize=7, framealpha=0.7,
+                              handlelength=1.2)
             if spike_overlay in ("raster", "both"):  # "both" is temporary, remove later
                 ax_raster = ax.twinx()
                 for i, stype in enumerate(raster_cell_types):
@@ -813,6 +841,9 @@ def plot_lfp_morph_csd(
     hist_bin_ms=1.0,
     hist_height_um=250.0,
     hist_color="k",
+    hist_scale="shared",
+    hist_baseline=None,       # {cell_type: other_cell_type}: draw cell_type's histogram from
+                              # other_cell_type's soma depth, e.g. {'L5_inhibitory': 'L5_pyramidal'}
 ):
     import matplotlib.pyplot as plt
 
@@ -820,6 +851,8 @@ def plot_lfp_morph_csd(
     # soma depth (z, µm) of each cell type, used as the 0 line of the spike histogram
     soma_z = {ct: float(np.mean(np.asarray(net.pos_dict[ct], dtype=float)[:, 2]))
               for ct in net.pos_dict if ct in net.cell_types}
+    if hist_baseline is not None:
+        soma_z = {ct: soma_z[hist_baseline.get(ct, ct)] for ct in soma_z}
 
     if ext_inputs is not None:
         fig, axes = plt.subplot_mosaic(
@@ -917,6 +950,7 @@ def plot_lfp_morph_csd(
         hist_bin_ms=hist_bin_ms,
         hist_height_um=hist_height_um,
         hist_color=hist_color,
+        hist_scale=hist_scale,
         show=False,
     )
 

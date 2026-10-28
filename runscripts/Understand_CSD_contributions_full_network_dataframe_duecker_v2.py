@@ -58,6 +58,19 @@ def save_fig(name, fig=None, dpi=150):
     path = os.path.join(FIGURES_DIR, f"{name}.png")
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
     print("Saved", path)
+
+# ---- spike-count histograms overlaid on the CSD (at each cell type's soma depth) ----
+# cell types whose spike histogram is drawn on every CSD panel
+csd_hist_cell_types = ['L2_pyramidal', 'L5_pyramidal', 'L2_inhibitory', 'L5_inhibitory']
+# outline colour per cell type (pyramidal kept black as before)
+csd_hist_colors = {'L2_pyramidal': 'k', 'L5_pyramidal': 'k',
+                   'L2_inhibitory': 'magenta', 'L5_inhibitory': 'magenta'}
+# "shared": same spikes->µm scale for all cell types (heights directly comparable)
+# "per_type": each cell type scaled to its own max (each has its own scale bar)
+csd_hist_scale = "shared"
+# baseline (0 spikes) of each histogram: inhibitory histograms start at the soma
+# depth of the pyramidal cells of the same layer (instead of their own soma depth)
+csd_hist_baseline = {'L2_inhibitory': 'L2_pyramidal', 'L5_inhibitory': 'L5_pyramidal'}
 # to run simulation: use Undestand_CSD_contributions_v3.py
 
 dpl = results['dpl']
@@ -127,7 +140,7 @@ plott.plot_spikes_hist(
     show=False,
 )
 ax_hist.set_xlabel('')
-ax_hist.set_title('Dipole')
+ax_hist.set_title('Duecker - Dipole')
 
 # spikes of all four Duecker cell types (L2/L5 inhibitory and pyramidal)
 plot_spikes_raster(net.cell_response, ax=ax_raster, show=False, marker_size=5.0)
@@ -137,10 +150,11 @@ ax_raster.set_xlabel('')
 # aggregate dipole: already scaled by 3000 when it was saved
 ax.plot(dpl.times, dpl.data['agg'], color='gray', lw=1.0, label='raw')
 ax.plot(dpl_smooth.times, dpl_smooth.data['agg'], color='#f4d58d', lw=1.5, label='smoothed')
-ax.set_title('Aggregate (L2/3 + L5)')
+ax.set_title(' Aggregate (L2/3 + L5)')
 ax.set_xlabel('Time (ms)')
 ax.set_ylabel('Dipole moment\n(nAm × 3000)')
 ax.legend(loc='upper left')
+save_fig("duecker_overview_drives_raster_dipole", fig)
 plt.show()
 
 
@@ -247,6 +261,10 @@ fig = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,      # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     sink="red")
 fig.suptitle("LFP/CSD from whole-network LFP (2nd derivative)")
 save_fig("duecker_csd_total_from_lfp", fig)
@@ -268,6 +286,10 @@ fig = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,      # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     unit_csd="µA/mm³",#"µV/µm²",
     overlay_raster_on_csd=True,
     sink="red")
@@ -322,6 +344,10 @@ fig2 = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,      # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     unit_csd="µA/mm³",
     overlay_raster_on_csd=True,
     sink="red")
@@ -353,6 +379,10 @@ fig2 = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     overlay_raster_on_csd=True,
 )
 fig2.suptitle("LFP/CSD from capacitive currents (compute_csd_from_sources)")
@@ -400,6 +430,10 @@ fig2 = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     overlay_raster_on_csd=True,
 )
 fig2.suptitle("LFP/CSD from ionic currents (compute_csd_from_sources)")
@@ -812,6 +846,10 @@ fig2 = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     overlay_raster_on_csd=True,
     sink="red")
 
@@ -973,6 +1011,10 @@ fig2 = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     overlay_raster_on_csd=True,
     sink="red")
 
@@ -1157,6 +1199,10 @@ fig2 = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     overlay_raster_on_csd=True,
     sink="red")
 
@@ -1182,6 +1228,8 @@ print(vmax_check)
 # FIGURE panel for meetings:
 #############
 #directly from sources, not from LFP
+z_edges = tme._z_edges_from_array(net, "probe1")
+
 fig_all = plott.make_csd_contribution_summary_figure(
     net, contact_labels, times_,
     csd_from_sources_, csd_cap_, csd_ionic_, csd_syn_,
@@ -1191,10 +1239,14 @@ fig_all = plott.make_csd_contribution_summary_figure(
     vmax_row0=10, vmax_row1=10,
     suptitle="Whole network (all pyramidal cells) - from sources",
 )
+# overlay slab boundaries only on the morphology panel
+ax_morph = next(ax for ax in fig_all.axes if ax.get_title() == "Morphology")
+for z in z_edges:
+    ax_morph.axhline(z, color='red', alpha=0.4, lw=1)
+save_fig("duecker_summary_csd_contributions", fig_all)
 plt.show()
 
 # slab (electrode-bin) boundaries, same convention used elsewhere in this script
-z_edges = tme._z_edges_from_array(net, "probe1")
 
 fig_all = plott.make_csd_contribution_summary_figure(
     net, contact_labels, times_,
@@ -1209,7 +1261,7 @@ fig_all = plott.make_csd_contribution_summary_figure(
 ax_morph = next(ax for ax in fig_all.axes if ax.get_title() == "Morphology")
 for z in z_edges:
     ax_morph.axhline(z, color='red', alpha=0.4, lw=1)
-
+save_fig("duecker_summary_csd_contributions_with_slabs", fig_all)
 plt.show()
 
 
@@ -1405,6 +1457,10 @@ for ch, title in duecker_intrinsic.items():
         spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
         hist_bin_ms=1.0,           # bin width (ms)
         hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+        raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+        hist_color=csd_hist_colors,
+        hist_scale=csd_hist_scale,
+        hist_baseline=csd_hist_baseline,
         overlay_raster_on_csd=True,
         sink="r",
     )
@@ -1444,6 +1500,10 @@ for ch, title in selected.items():
         spike_overlay="hist",
         hist_bin_ms=1.0,
         hist_height_um=1000.0,
+        raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+        hist_color=csd_hist_colors,
+        hist_scale=csd_hist_scale,
+        hist_baseline=csd_hist_baseline,
         overlay_raster_on_csd=True,
         sink="r",
     )
@@ -1567,6 +1627,10 @@ def plot_combined_lfp_csd(lfp_, csd_, title, vmin=-60, vmax=60):
         spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
         hist_bin_ms=1.0,           # bin width (ms)
         hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+        raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+        hist_color=csd_hist_colors,
+        hist_scale=csd_hist_scale,
+        hist_baseline=csd_hist_baseline,
         overlay_raster_on_csd=True,
         sink="r",
     )
@@ -2096,6 +2160,10 @@ fig = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     overlay_raster_on_csd=True,
     sink="r")
 fig.suptitle("LFP/CSD from agg_i_mem, excluding apical obliques")
@@ -2412,6 +2480,10 @@ fig = plott.plot_lfp_morph_csd(
     spike_overlay="hist",      # spike-count histogram at each soma depth (instead of raster)
     hist_bin_ms=1.0,           # bin width (ms)
     hist_height_um=1000.0,     # height of the tallest bar on the depth axis (µm)
+    raster_cell_types=csd_hist_cell_types,  # pyramidal + inhibitory histograms
+    hist_color=csd_hist_colors,
+    hist_scale=csd_hist_scale,
+    hist_baseline=csd_hist_baseline,
     overlay_raster_on_csd=True,
     sink="r")
 fig.suptitle("LFP/CSD from agg_i_mem, excluding apical trunk")
