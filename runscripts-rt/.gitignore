@@ -1,0 +1,7 @@
+mod/arm64/
+mod/x86_64/
+cpp_build/
+sim_outputs/
+figures/
+hnn-tuning/
+*.png
