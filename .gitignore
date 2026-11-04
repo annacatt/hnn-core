@@ -60,3 +60,10 @@ __pycache__
 .ipynb_checkpoints
 *.log
 .DS_Store
+
+# Local outputs (runscripts, simulations)
+*.pkl
+*.png
+*.csv
+runscripts/Figures/
+runscripts/data/
