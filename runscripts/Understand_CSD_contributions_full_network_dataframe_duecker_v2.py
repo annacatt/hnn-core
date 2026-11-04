@@ -43,7 +43,8 @@ l5_component_channels = [
 #with open('runscripts/data/sim_results_dt000625_withmembranepot_newelect_calc.pkl', 'rb') as f: #from -550 up
 import os
 
-pkl_path = 'runscripts/data/sim_results_dt000625_conn_dataframe_isec_v2_duecker.pkl' #from -550 up
+#pkl_path = 'runscripts/data/sim_results_dt000625_conn_dataframe_isec_v2_duecker.pkl' #from -550 up
+pkl_path = 'runscripts/data/sim_results_dt000625_conn_dataframe_isec_v2_duecker_optimized.pkl' #from -550 up
 with open(pkl_path, 'rb') as f:
     results = pickle.load(f)
 

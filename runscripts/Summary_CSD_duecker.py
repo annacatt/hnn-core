@@ -7,6 +7,8 @@ Since the most contributing ionic currents of this model are not known yet, the 
 show single ionic currents show ALL the ionic channels of the pyramidal cells (ionic_channels).
 
 Figures, saved to runscripts/Figures/<data file name>/ (when save_figures is True):
+  0) overview: external drive histogram / raster plot of all cell types / aggregate dipole:
+       duecker_overview_drives_raster_dipole.png
   1) morphology + Total / Capacitive / Ionic / Synaptic / residual / GABA-A slow / GABA-A fast /
      AMPA / NMDA (plott.make_csd_contribution_summary_figure), without and with slab borders:
        duecker_summary_csd_contributions.png, duecker_summary_csd_contributions_with_slabs.png
@@ -30,21 +32,25 @@ Run from the hnn-core folder (data paths are relative to it).
 import os
 import pickle
 
+import copy
+
 import numpy as np
 import matplotlib.pyplot as plt
+from hnn_core.viz import plot_spikes_raster
 
 import postproc_tm_currents_dipole_lfp_csd as tme
 import Plotting_tools as plott
 
 # ---------------------------------------------------------------- settings
 # which simulation to use
-pkl_path = 'runscripts/data/sim_results_dt000625_conn_dataframe_isec_v2_duecker.pkl'
+pkl_path = 'runscripts/data/sim_results_dt000625_conn_dataframe_isec_v2_duecker_optimized.pkl'
 
 # True: save every figure as PNG in Figures/<data file name>/; False: only show them
 save_figures = True
 
 # which figures to make (False = skip that section entirely: no plotting, no saving)
 make_figures = {
+    "overview":           False,   # 0) drive histogram / raster plot / aggregate dipole
     "contributions":      False,   # 1) morphology + total/cap/ionic/syn/... (+ version with slabs)
     "synaptic_breakdown": False,   # 2) Total/Synaptic/Inhibitory/Excitatory/Recurrent/External (own + fixed scale)
     "single_channels":    False,   # 3) every ionic channel: LFP | morphology | CSD (one figure per channel)
@@ -53,7 +59,7 @@ make_figures = {
     "vsec_sections":      False,   # 6) morphology | Vm per section | net ionic + synaptic of every segment
     "lfp_currents_depth": False,   # 7) morphology | LFP of the group per electrode | net ionic + synaptic
     "vsec_all_ionic":     False,   # 8) morphology | Vm per section | all ionic currents of every segment
-    "each_ionic_csd":     True,   # 9) CSD of every ionic current, each with its own colour scale (grid)
+    "each_ionic_csd":     True,    # 9) CSD of every ionic current, each with its own colour scale (grid)
 }
 # True: open the figure windows at the end; False: close them (useful when only saving)
 show_figures = True
@@ -124,7 +130,7 @@ first_gid = 226
 n_cells = [1, 2, 5, 10, 20, 40, 70, None]   # None = all cells of that type
 
 # colour limits of the contribution summary figure (µA/mm³): row 0 = total/cap/ionic/syn, row 1 = synapse types
-vmax_row0, vmax_row1 = 30, 10
+vmax_row0, vmax_row1 = 10, 10# 30, 10
 
 # colour limits of the fixed-scale synaptic breakdown (µA/mm³)
 vmax_fixed = {"Total (agg_i_mem)": 30, "Synaptic (all)": 30, "Inhibitory": 10,
@@ -159,6 +165,45 @@ contact_labels = np.asarray(depths, dtype=int)
 tme.downsample_currents(net, step=step, include_isec=True, include_vsec=True, include_ca=True)
 times = times[::step]
 times_ = times[1:]
+
+# ---------------------------------------------------------------- 0) overview figure
+# input histogram / raster / dipole (same figure as in
+# Understand_CSD_contributions_full_network_dataframe_duecker_v2.py)
+if make_figures["overview"]:
+    dpl = results['dpl']
+    window_len = 30                                   # ms, smoothing window
+    dpl_smooth = copy.deepcopy(dpl).smooth(window_len)
+
+    fig, (ax_hist, ax_raster, ax) = plt.subplots(
+        3, 1, sharex=True,
+        gridspec_kw={'height_ratios': [1, 3, 3]},
+        constrained_layout=True,
+    )
+
+    # external drives (Duecker drive names: prox1, dist1, prox2)
+    plott.plot_spikes_hist(
+        net.cell_response,
+        ax=ax_hist,
+        spike_types={'Distal': ['dist'], 'Proximal': ['prox']},
+        color={'Distal': 'green', 'Proximal': 'red'},
+        show=False,
+    )
+    ax_hist.set_xlabel('')
+    ax_hist.set_title('Duecker - Dipole')
+
+    # spikes of all four Duecker cell types (L2/L5 inhibitory and pyramidal)
+    plot_spikes_raster(net.cell_response, ax=ax_raster, show=False, marker_size=5.0)
+    ax_raster.set_title('Raster Plot')
+    ax_raster.set_xlabel('')
+
+    # aggregate dipole: already scaled by 3000 when it was saved
+    ax.plot(dpl.times, dpl.data['agg'], color='gray', lw=1.0, label='raw')
+    ax.plot(dpl_smooth.times, dpl_smooth.data['agg'], color='#f4d58d', lw=1.5, label='smoothed')
+    ax.set_title(' Aggregate (L2/3 + L5)')
+    ax.set_xlabel('Time (ms)')
+    ax.set_ylabel('Dipole moment\n(nAm × 3000)')
+    ax.legend(loc='upper left')
+    save_fig("duecker_overview_drives_raster_dipole", fig)
 
 def closest_gid_to_probe(cell_type, array_name="probe1"):
     """gid of the cell of this type whose soma is closest (in x, y) to the laminar probe."""
