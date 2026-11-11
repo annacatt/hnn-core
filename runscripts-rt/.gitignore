@@ -5,3 +5,4 @@ sim_outputs/
 figures/
 hnn-tuning/
 *.png
+data/lee_dalley/

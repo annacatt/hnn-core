@@ -19,7 +19,7 @@
 
 #define  SVCOUNT     11 // number of state variables
 #define  SVCOUNT2    2  // number of state variables
-#define  VIPCOUNT    2  // number of VIP cells
+#define  VIPCOUNT    1  // number of VIP cells
 #define  START        0
 #define  END        5000 //ms
 #define  TIMESTEP   0.05

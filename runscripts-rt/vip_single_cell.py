@@ -1,15 +1,13 @@
-"""Single VIP interneuron: first protocols.
+"""Simulate single VIP interneuron
 
 The model (parameters, mechanisms, helpers) is defined in vip_cell.py, a
-NEURON port of VIPwithT.cpp. See compare_cpp_neuron.py for the direct
+NEURON's version of VIPwithT.cpp (C++ Michelle's code). See compare_cpp_neuron.py for the direct
 comparison with the C++ code.
 
-Compile the new mechanisms once before running:
+To compile the new mechanisms once before running:
     cd runscripts-rt/mod
     nrnivmodl
 
-The script is split into cells (# %%) so it can be run step by step in
-PyCharm, VS Code or Jupyter.
 """
 
 # %% imports and paths

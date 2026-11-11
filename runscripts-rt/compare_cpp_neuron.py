@@ -1,17 +1,21 @@
 """Compare the C++ VIP model (VIPwithT.cpp) with its NEURON version (vip_cell.py).
 
-The applied current IAPP (uA/cm2, constant from t = 0) is set below, or on
-the command line: `python compare_cpp_neuron.py 8.5`. The C++ default is 9.8.
+Runs every simulation listed in SIMS below. Each one sets the applied current
+Iapp (uA/cm2, constant from t = 0) and the D-current, M-current and T-current
+strengths (gd, gm in mS/cm2; Pca in the C++ units), the same in both models.
+`python compare_cpp_neuron.py 8.5` instead runs one simulation at that Iapp
+with the default channels (gd = 3, gm = 1, Pca = 80).
 
-1. Compiles and runs VIPwithT.cpp for one 5 s sweep at IAPP and saves the
-   voltage trace to sim_outputs/vip_cpp_Iapp<IAPP>.csv. VIPwithT.cpp is
-   not modified: a copy with IAPP and a single sweep is built in cpp_build/.
-2. Runs the NEURON cell with the same protocol (constant IAPP from t = 0,
-   V(0) = -63 mV) and saves sim_outputs/vip_neuron_Iapp<IAPP>.csv, sampled
-   every 0.05 ms like the C++ output.
+For each simulation, with <TAG> = Iapp<x>_gd<x>_gm<x>_pca<x>:
+1. Compiles and runs VIPwithT.cpp for one 5 s sweep and saves the voltage
+   trace to sim_outputs/vip_cpp_<TAG>.csv. VIPwithT.cpp is not modified: a
+   copy with these parameters and a single sweep is built in cpp_build/.
+2. Runs the NEURON cell with the same parameters and protocol (constant Iapp
+   from t = 0, V(0) = -63 mV) and saves sim_outputs/vip_neuron_<TAG>.csv,
+   sampled every 0.05 ms like the C++ output.
 3. Compares spike and burst features (table printed and saved to
-   sim_outputs/comparison_summary_Iapp<IAPP>.csv) and plots the two traces
-   (figures/compare_cpp_neuron/compare_cpp_neuron_Iapp<IAPP>.png).
+   sim_outputs/comparison_summary_<TAG>.csv) and plots the two traces
+   (figures/compare_cpp_neuron/compare_cpp_neuron_<TAG>.png).
 
 Needs a C++ compiler for step 1: on macOS, `xcode-select --install`.
 Saved outputs are reused on later runs; set RERUN_CPP / RERUN_NEURON to
@@ -43,17 +47,36 @@ FIG_DIR = RT_DIR / 'figures' / 'compare_cpp_neuron'
 for d in (BUILD_DIR, OUT_DIR, FIG_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
-# applied current density (uA/cm2), the same in both models
-IAPP = 9.80
-if len(sys.argv) > 1:          # optional command-line value
+# Simulations to run, one dict each; the same values go into both models.
+#   iapp: applied current density (uA/cm2), constant from t = 0
+#   gd:   D-current conductance (mS/cm2)    VIPwithT.cpp default: 3
+#   gm:   M-current conductance (mS/cm2)    VIPwithT.cpp default: 1
+#   pca:  T-current permeability Pca        VIPwithT.cpp default: 80
+SIMS = [
+    {'iapp': 5., 'gd': 3., 'gm': 0., 'pca': 80.},
+    {'iapp': 5., 'gd': 3., 'gm': 0., 'pca': 20.},
+    {'iapp': 5., 'gd': 3., 'gm': 0., 'pca': 0.},
+]
+if len(sys.argv) > 1:          # optional: one Iapp, default channels
     try:
-        IAPP = float(sys.argv[1])
+        SIMS = [{'iapp': float(sys.argv[1]), 'gd': 3., 'gm': 1., 'pca': 80.}]
     except ValueError:         # e.g. Jupyter's own arguments
         pass
-TAG = f'Iapp{IAPP:g}'          # used in output file names
 
-CPP_CSV = OUT_DIR / f'vip_cpp_{TAG}.csv'
-NEURON_CSV = OUT_DIR / f'vip_neuron_{TAG}.csv'
+VIP_AREA = 0.00029  # VIParea in VIPwithT.cpp (multiplies Pca)
+
+
+def tag(sim):
+    """Label used in file names, e.g. 'Iapp5_gd3_gm0_pca80'."""
+    return (f'Iapp{sim["iapp"]:g}_gd{sim["gd"]:g}_gm{sim["gm"]:g}'
+            f'_pca{sim["pca"]:g}')
+
+
+def label(sim):
+    """Label used in figure titles."""
+    return (f'Iapp = {sim["iapp"]:g} uA/cm2, gd = {sim["gd"]:g}, '
+            f'gm = {sim["gm"]:g}, Pca = {sim["pca"]:g}')
+
 
 RERUN_CPP = False
 RERUN_NEURON = False
@@ -71,17 +94,25 @@ NEURON_DT = 0.0025
 
 # %% helpers: run and save the C++ model
 
-def run_cpp(iapp, src=CPP_SRC, build_dir=BUILD_DIR):
-    """Build a one-sweep copy of VIPwithT.cpp with Iapp = iapp, run it,
-    return t, V."""
+def run_cpp(sim, src=CPP_SRC, build_dir=BUILD_DIR):
+    """Build a one-sweep copy of VIPwithT.cpp with the parameters in sim
+    (iapp, gd, gm, pca), run it, return t, V."""
     code = src.read_text()
-    # Iapp is hardcoded inside Derive() as "Iapp[z] = 9.8;" (overriding the
-    # values set just above it); replace that number.
-    pattern = r'(Iapp\[z\]\s*=\s*)[-+0-9.eE]+(\s*;)'
-    code, n = re.subn(pattern, rf'\g<1>{iapp!r}\g<2>', code)
-    if n != 1:
-        raise RuntimeError(f'expected one "Iapp[z] = <number>;" line in '
-                           f'{src.name}, found {n}')
+    # Each parameter is set by one line of VIPwithT.cpp; replace its number.
+    # Iapp, Pca and gm are (re)set inside the cell loop of Derive(), which
+    # overrides the values declared above it ("Iapp[z] = 9.8;", "Pca = 80;",
+    # "gm = 1;"); gd is set once, where it is declared ("double gd = 3;").
+    num = r'[-+0-9.eE]+'
+    for name, pattern, value in (
+            ('Iapp', rf'(Iapp\[z\]\s*=\s*){num}(\s*;)', sim['iapp']),
+            ('Pca', rf'(^\s*Pca\s*=\s*){num}(\s*;)', sim['pca']),
+            ('gm', rf'(^\s*gm\s*=\s*){num}(\s*;)', sim['gm']),
+            ('gd', rf'(double\s+gd\s*=\s*){num}(\s*;)', sim['gd'])):
+        code, n = re.subn(pattern, rf'\g<1>{float(value)!r}\g<2>', code,
+                          flags=re.MULTILINE)
+        if n != 1:
+            raise RuntimeError(f'expected one line setting {name} in '
+                               f'{src.name}, found {n}')
     # The C++ repeats the 5 s simulation for Ifreq = 5, 10, ..., 80 Hz, but
     # Ifreq only feeds the (commented-out) sinusoidal input, so every sweep
     # is the same run continued. Keep just the first one.
@@ -118,35 +149,46 @@ def load_trace(path):
     return d[:, 0], d[:, 1]
 
 
-# %% 1. C++ simulation
-if RERUN_CPP or not CPP_CSV.exists():
-    t_cpp, v_cpp = run_cpp(IAPP)
-    save_trace(CPP_CSV, t_cpp, v_cpp,
-               f'VIPwithT.cpp, one 5 s sweep, Iapp = {IAPP:g} uA/cm2, '
-               'V(0) = -63 mV, RK4 dt = 0.05 ms')
-    print(f'C++ run saved to {CPP_CSV}')
-else:
-    t_cpp, v_cpp = load_trace(CPP_CSV)
-    print(f'C++ run loaded from {CPP_CSV}')
+# %% helpers: run (or load) one simulation in each model
+
+def get_cpp(sim):
+    path = OUT_DIR / f'vip_cpp_{tag(sim)}.csv'
+    if RERUN_CPP or not path.exists():
+        t, v = run_cpp(sim)
+        save_trace(path, t, v, f'VIPwithT.cpp, one 5 s sweep, {label(sim)}, '
+                   'V(0) = -63 mV, RK4 dt = 0.05 ms')
+        print(f'C++ run saved to {path}')
+    else:
+        t, v = load_trace(path)
+        print(f'C++ run loaded from {path}')
+    return t, v
 
 
-# %% 2. NEURON simulation, same protocol
-if RERUN_NEURON or not NEURON_CSV.exists():
-    from vip_cell import (delete_cell, density_to_nA, get_vip_cell,
-                          run_current_clamp)
-    cell = get_vip_cell()
-    soma = cell._nrn_sections['soma']
-    t_nrn, v_nrn = run_current_clamp(cell, density_to_nA(soma, IAPP),
-                                     delay=0, dur=1e9, tstop=TSTOP,
-                                     dt=NEURON_DT, record_dt=CPP_DT)
-    delete_cell()
-    save_trace(NEURON_CSV, t_nrn, v_nrn,
-               f'vip_cell.py, Iapp = {IAPP:g} uA/cm2, V(0) = -63 mV, '
-               f'dt = {NEURON_DT} ms, sampled every {CPP_DT} ms')
-    print(f'NEURON run saved to {NEURON_CSV}')
-else:
-    t_nrn, v_nrn = load_trace(NEURON_CSV)
-    print(f'NEURON run loaded from {NEURON_CSV}')
+def get_neuron(sim):
+    path = OUT_DIR / f'vip_neuron_{tag(sim)}.csv'
+    if RERUN_NEURON or not path.exists():
+        import copy
+        from vip_cell import (delete_cell, density_to_nA, get_vip_cell,
+                              run_current_clamp, vip_params)
+        params = copy.deepcopy(vip_params)
+        soma_params = params['soma']
+        soma_params['kd_golomb2007'] = sim['gd'] * 1e-3      # mS -> S/cm2
+        soma_params['km_mccarthy2023'] = sim['gm'] * 1e-3    # mS -> S/cm2
+        # Pca * VIParea, then uA/cm2 -> mA/cm2 (as in vip_cell.py)
+        soma_params['cat_mccarthy2023'] = sim['pca'] * VIP_AREA * 1e-3
+        cell = get_vip_cell(params)
+        soma = cell._nrn_sections['soma']
+        t, v = run_current_clamp(cell, density_to_nA(soma, sim['iapp']),
+                                 delay=0, dur=1e9, tstop=TSTOP,
+                                 dt=NEURON_DT, record_dt=CPP_DT)
+        delete_cell()
+        save_trace(path, t, v, f'vip_cell.py, {label(sim)}, V(0) = -63 mV, '
+                   f'dt = {NEURON_DT} ms, sampled every {CPP_DT} ms')
+        print(f'NEURON run saved to {path}')
+    else:
+        t, v = load_trace(path)
+        print(f'NEURON run loaded from {path}')
+    return t, v
 
 
 # %% helpers: features
@@ -204,71 +246,89 @@ def features(t, v):
     return feat, spk, bursts
 
 
-# %% 3. compare features
-f_cpp, spk_cpp, bursts_cpp = features(t_cpp, v_cpp)
-f_nrn, spk_nrn, bursts_nrn = features(t_nrn, v_nrn)
 
-rows = []
-print(f'\n{"feature":<24}{"C++":>10}{"NEURON":>10}{"diff":>10}{"diff %":>9}')
-for k in sorted(set(f_cpp) | set(f_nrn), key=list({**f_cpp, **f_nrn}).index):
-    a, b = f_cpp.get(k, np.nan), f_nrn.get(k, np.nan)
-    pct = 100 * (b - a) / abs(a) if np.isfinite(a) and a != 0 else np.nan
-    rows.append((k, a, b, b - a, pct))
-    print(f'{k:<24}{a:>10.2f}{b:>10.2f}{b - a:>10.2f}{pct:>8.1f}%')
+# %% helpers: compare and plot one simulation
 
-with open(OUT_DIR / f'comparison_summary_{TAG}.csv', 'w') as fh:
-    fh.write('feature,cpp,neuron,diff,diff_percent\n')
-    for r in rows:
-        fh.write(','.join([r[0]] + [f'{x:.4f}' for x in r[1:]]) + '\n')
+def compare_features(sim, t_cpp, v_cpp, t_nrn, v_nrn):
+    """Print and save the feature table; return the spikes and bursts."""
+    f_cpp, spk_cpp, bursts_cpp = features(t_cpp, v_cpp)
+    f_nrn, spk_nrn, bursts_nrn = features(t_nrn, v_nrn)
+
+    rows = []
+    print(f'\n{"feature":<24}{"C++":>10}{"NEURON":>10}{"diff":>10}{"diff %":>9}')
+    for k in sorted(set(f_cpp) | set(f_nrn), key=list({**f_cpp, **f_nrn}).index):
+        a, b = f_cpp.get(k, np.nan), f_nrn.get(k, np.nan)
+        pct = 100 * (b - a) / abs(a) if np.isfinite(a) and a != 0 else np.nan
+        rows.append((k, a, b, b - a, pct))
+        print(f'{k:<24}{a:>10.2f}{b:>10.2f}{b - a:>10.2f}{pct:>8.1f}%')
+
+    with open(OUT_DIR / f'comparison_summary_{tag(sim)}.csv', 'w') as fh:
+        fh.write('feature,cpp,neuron,diff,diff_percent\n')
+        for r in rows:
+            fh.write(','.join([r[0]] + [f'{x:.4f}' for x in r[1:]]) + '\n')
+
+    return spk_cpp, bursts_cpp, spk_nrn, bursts_nrn
 
 
-# %% 4. plot
-c_cpp, c_nrn = 'k', 'tab:red'
-fig, axs = plt.subplot_mosaic([['full', 'full'], ['onset', 'spike'],
-                               ['onset', 'isi']],
-                              figsize=(10, 7), constrained_layout=True)
+def plot_comparison(sim, t_cpp, v_cpp, spk_cpp, bursts_cpp,
+                    t_nrn, v_nrn, spk_nrn, bursts_nrn):
+    c_cpp, c_nrn = 'k', 'tab:red'
+    fig, axs = plt.subplot_mosaic([['full', 'full'], ['onset', 'spike'],
+                                   ['onset', 'isi']],
+                                  figsize=(10, 7), constrained_layout=True)
 
-ax = axs['full']
-ax.plot(t_cpp, v_cpp, c_cpp, lw=0.5, label='C++ (RK4, dt 0.05 ms)')
-ax.plot(t_nrn, v_nrn, c_nrn, lw=0.5, alpha=0.7, label=f'NEURON (dt {NEURON_DT} ms)')
-ax.set(xlabel='time (ms)', ylabel='V (mV)',
-       title=f'VIP cell, constant Iapp = {IAPP:g} uA/cm2')
-ax.legend(loc='upper right', fontsize=8)
+    ax = axs['full']
+    ax.plot(t_cpp, v_cpp, c_cpp, lw=0.5, label='C++ (RK4, dt 0.05 ms)')
+    ax.plot(t_nrn, v_nrn, c_nrn, lw=0.5, alpha=0.7, label=f'NEURON (dt {NEURON_DT} ms)')
+    ax.set(xlabel='time (ms)', ylabel='V (mV)',
+           title=f'VIP cell, {label(sim)}')
+    ax.legend(loc='upper right', fontsize=8)
 
-# second burst, each trace aligned to its own burst onset
-ax = axs['onset']
-for t, v, bursts, c in ((t_cpp, v_cpp, bursts_cpp, c_cpp),
-                        (t_nrn, v_nrn, bursts_nrn, c_nrn)):
-    if len(bursts) > 1:
-        t0 = bursts[1][0]
-        w = (t >= t0 - 100) & (t <= t0 + 150)
-        ax.plot(t[w] - t0, v[w], c, lw=0.8)
-ax.set(xlabel='time from burst 2 onset (ms)', ylabel='V (mV)',
-       title='burst onset (aligned)')
+    # second burst, each trace aligned to its own burst onset
+    ax = axs['onset']
+    for t, v, bursts, c in ((t_cpp, v_cpp, bursts_cpp, c_cpp),
+                            (t_nrn, v_nrn, bursts_nrn, c_nrn)):
+        if len(bursts) > 1:
+            t0 = bursts[1][0]
+            w = (t >= t0 - 100) & (t <= t0 + 150)
+            ax.plot(t[w] - t0, v[w], c, lw=0.8)
+    ax.set(xlabel='time from burst 2 onset (ms)', ylabel='V (mV)',
+           title='burst onset (aligned)')
 
-# average spike waveform, aligned to the threshold crossing
-ax = axs['spike']
-for t, v, spk, c in ((t_cpp, v_cpp, spk_cpp, c_cpp),
-                     (t_nrn, v_nrn, spk_nrn, c_nrn)):
-    dt_s = t[1] - t[0]
-    n_pre, n_post = int(2 / dt_s), int(6 / dt_s)
-    idx = np.searchsorted(t, spk)
-    idx = idx[(idx > n_pre) & (idx < len(v) - n_post)]
-    if len(idx) == 0:
-        continue
-    waves = np.array([v[i - n_pre:i + n_post] for i in idx])
-    ax.plot(np.arange(-n_pre, n_post) * dt_s, waves.mean(0), c, lw=1.2)
-ax.set(xlabel='time from 0 mV crossing (ms)', ylabel='V (mV)',
-       title='mean spike')
+    # average spike waveform, aligned to the threshold crossing
+    ax = axs['spike']
+    for t, v, spk, c in ((t_cpp, v_cpp, spk_cpp, c_cpp),
+                         (t_nrn, v_nrn, spk_nrn, c_nrn)):
+        dt_s = t[1] - t[0]
+        n_pre, n_post = int(2 / dt_s), int(6 / dt_s)
+        idx = np.searchsorted(t, spk)
+        idx = idx[(idx > n_pre) & (idx < len(v) - n_post)]
+        if len(idx) == 0:
+            continue
+        waves = np.array([v[i - n_pre:i + n_post] for i in idx])
+        ax.plot(np.arange(-n_pre, n_post) * dt_s, waves.mean(0), c, lw=1.2)
+    ax.set(xlabel='time from 0 mV crossing (ms)', ylabel='V (mV)',
+           title='mean spike')
 
-# ISI along each burst
-ax = axs['isi']
-for bursts, c, m in ((bursts_cpp, c_cpp, 'o'), (bursts_nrn, c_nrn, 's')):
-    for b in bursts:
-        ax.plot(np.arange(1, len(b)), np.diff(b), c, marker=m, ms=3, lw=0.6,
-                alpha=0.8)
-ax.set(xlabel='spike number in burst', ylabel='ISI (ms)',
-       title='adaptation within bursts')
+    # ISI along each burst
+    ax = axs['isi']
+    for bursts, c, m in ((bursts_cpp, c_cpp, 'o'), (bursts_nrn, c_nrn, 's')):
+        for b in bursts:
+            ax.plot(np.arange(1, len(b)), np.diff(b), c, marker=m, ms=3, lw=0.6,
+                    alpha=0.8)
+    ax.set(xlabel='spike number in burst', ylabel='ISI (ms)',
+           title='adaptation within bursts')
 
-fig.savefig(FIG_DIR / f'compare_cpp_neuron_{TAG}.png', dpi=150)
+    fig.savefig(FIG_DIR / f'compare_cpp_neuron_{tag(sim)}.png', dpi=150)
+
+
+# %% run every simulation in SIMS
+for sim in SIMS:
+    print(f'\n=== {label(sim)} ===')
+    t_cpp, v_cpp = get_cpp(sim)
+    t_nrn, v_nrn = get_neuron(sim)
+    spikes = compare_features(sim, t_cpp, v_cpp, t_nrn, v_nrn)
+    plot_comparison(sim, t_cpp, v_cpp, spikes[0], spikes[1],
+                    t_nrn, v_nrn, spikes[2], spikes[3])
 plt.show()
+

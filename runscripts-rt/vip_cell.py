@@ -1,12 +1,11 @@
 """VIP interneuron model in NEURON (Katharina's "hnn-tuning" format).
 
-NEURON version of VIPwithT.cpp (Michelle's code): a single compartment
+NEURON version of VIPwithT.cpp (Michelle's code): a single compartment VIP interneuron
 with fast Na, delayed-rectifier K, D (slowly inactivating K), M (slow K)
 and T-type Ca currents plus a leak.
 
-This module only defines the model and simulation helpers; importing it
-runs nothing. Protocols live in vip_single_cell.py, the C++ comparison in
-compare_cpp_neuron.py.
+This module only defines the model and simulation helpers.
+Run vip_single_cell.py for simulation; the C++ comparison is in compare_cpp_neuron.py.
 
 Mechanisms
 ----------
@@ -17,7 +16,7 @@ New, in runscripts-rt/mod (transcribed from VIPwithT.cpp):
     km_mccarthy2023   M current
     cat_mccarthy2023  T current (GHK, fixed [Ca]i and [Ca]o)
 
-Compile the new mechanisms once on your machine before running:
+To compile new mechanisms:
     cd runscripts-rt/mod
     nrnivmodl
 
@@ -29,7 +28,7 @@ Unit conversions from the C++ (which uses uA/cm2, mS/cm2, uF/cm2):
 
 Cell building uses local copies of two hnn-tuning helper files
 (cell_builder_utils.py, inh_mechs_utils.py, from hnn-tuning commit fac61b4),
-so hnn-tuning does not need to be installed; only neuron and hnn_core do.
+so hnn-tuning does not need to be installed
 """
 
 import sys
